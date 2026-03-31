@@ -1,0 +1,141 @@
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-display: 'Syne', sans-serif;
+  --font-body:    'DM Sans', sans-serif;
+  --font-mono:    'DM Mono', monospace;
+
+  /* Brand palette */
+  --wa-green:       #25D366;
+  --wa-green-dark:  #128C7E;
+  --wa-green-light: #DCF8C6;
+  --accent:         #2e8535;
+  --accent-light:   #f0f7f0;
+
+  /* Surface system */
+  --bg:           #F7F5F0;
+  --bg-card:      #FFFFFF;
+  --bg-sidebar:   #111812;
+  --text-primary:   #1A1A1A;
+  --text-secondary: #6B7280;
+  --text-inverse:   #F7F5F0;
+  --border:         #E5E7EB;
+  --border-strong:  #D1D5DB;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #D1D5DB; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #9CA3AF; }
+
+/* Custom utility classes */
+@layer components {
+  .sidebar-link {
+    @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium
+           text-white/60 hover:text-white hover:bg-white/10 transition-all duration-150;
+  }
+  .sidebar-link.active {
+    @apply text-white bg-white/15;
+  }
+
+  .card {
+    @apply bg-white rounded-xl border border-gray-100 shadow-sm;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-lg
+           bg-forest-600 text-white text-sm font-semibold
+           hover:bg-forest-700 active:bg-forest-800
+           transition-all duration-150 shadow-sm;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-lg
+           bg-white text-gray-700 text-sm font-medium
+           border border-gray-200 hover:bg-gray-50 hover:border-gray-300
+           transition-all duration-150;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center gap-2 px-3 py-2 rounded-lg
+           text-gray-600 text-sm font-medium
+           hover:bg-gray-100 transition-all duration-150;
+  }
+
+  .input {
+    @apply w-full px-3 py-2.5 rounded-lg border border-gray-200
+           bg-white text-sm text-gray-900 placeholder-gray-400
+           focus:outline-none focus:ring-2 focus:ring-forest-500 focus:border-transparent
+           transition-all duration-150;
+  }
+
+  .tag-pill {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  /* WhatsApp-style message bubbles */
+  .bubble-out {
+    @apply bg-[#DCF8C6] text-gray-900 rounded-2xl rounded-tr-sm px-4 py-2.5 max-w-sm shadow-sm;
+  }
+
+  .bubble-in {
+    @apply bg-white text-gray-900 rounded-2xl rounded-tl-sm px-4 py-2.5 max-w-sm shadow-sm border border-gray-100;
+  }
+
+  /* Kanban column */
+  .kanban-col {
+    @apply flex flex-col bg-gray-50 rounded-xl border border-gray-200 min-w-[280px] max-w-[280px];
+  }
+
+  .kanban-card {
+    @apply bg-white rounded-lg border border-gray-100 p-3 shadow-sm
+           hover:shadow-md hover:border-gray-200 cursor-pointer
+           transition-all duration-150 animate-slide-in-up;
+  }
+}
+
+/* Loading skeleton animation */
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+  border-radius: 4px;
+}
+
+/* Online indicator */
+.online-dot {
+  @apply w-2 h-2 rounded-full bg-green-400 animate-pulse-dot;
+  box-shadow: 0 0 0 2px white;
+}
+
+/* Message status ticks */
+.tick-sent      { color: #9CA3AF; }
+.tick-delivered { color: #9CA3AF; }
+.tick-read      { color: #34D399; }

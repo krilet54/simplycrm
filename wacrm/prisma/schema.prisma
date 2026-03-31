@@ -1,0 +1,416 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Workspaces ──────────────────────────────────────────────────────────────
+model Workspace {
+  id                    String   @id @default(uuid())
+  businessName          String
+  whatsappPhoneNumberId String?  // Meta Phone Number ID
+  whatsappAccessToken   String?  // Long-lived token (encrypt in prod)
+  stripeCustomerId      String?
+  stripePriceId         String?
+  stripeSubscriptionId  String?
+  plan                  Plan     @default(STARTER)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  users         User[]
+  contacts      Contact[]
+  messages      Message[]
+  quickReplies  QuickReply[]
+  kanbanStages  KanbanStage[]
+  tags          Tag[]
+  invoices      Invoice[]
+  metaOAuthToken MetaOAuthToken?
+  activities    Activity[]
+  tasks         Task[]
+  emails        Email[]
+
+  @@map("workspaces")
+}
+
+enum Plan {
+  STARTER
+  PRO
+  TRIAL
+}
+
+enum ContactSource {
+  WHATSAPP
+  WALK_IN
+  PHONE_CALL
+  REFERRAL
+  SOCIAL_MEDIA
+  EVENT
+  OTHER
+}
+
+// ─── Users (Agents) ──────────────────────────────────────────────────────────
+model User {
+  id          String   @id @default(uuid())
+  workspaceId String
+  supabaseId  String   @unique // Supabase Auth user ID
+  name        String
+  email       String
+  role        AgentRole @default(AGENT)
+  avatarUrl   String?
+  isOnline    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id])
+  messages    Message[] @relation("SentMessages")
+  notes       Note[]
+  activities  Activity[]  // Activities created by this user
+  tasksCreated Task[] @relation("CreatedTasks")
+
+  @@map("users")
+}
+
+enum AgentRole {
+  OWNER
+  ADMIN
+  AGENT
+}
+
+// ─── Contacts ────────────────────────────────────────────────────────────────
+model Contact {
+  id             String        @id @default(uuid())
+  workspaceId    String
+  phoneNumber    String
+  name           String?
+  email          String?
+  avatarUrl      String?
+  kanbanStageId  String?
+  isBlocked      Boolean       @default(false)
+  source         ContactSource @default(WHATSAPP)
+  sourceNote     String?
+  interest       String?
+  estimatedValue Float?
+  lastMessageAt  DateTime?
+  deletedAt      DateTime?     // Soft-delete
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  workspace    Workspace    @relation(fields: [workspaceId], references: [id])
+  kanbanStage  KanbanStage? @relation(fields: [kanbanStageId], references: [id])
+  messages     Message[]
+  notes        Note[]
+  contactTags  ContactTag[]
+  invoices     Invoice[]
+  activities   Activity[]
+  tasks        Task[]
+  emails       Email[]
+
+  @@unique([workspaceId, phoneNumber])
+  @@map("contacts")
+}
+
+// ─── Messages ────────────────────────────────────────────────────────────────
+model Message {
+  id            String      @id @default(uuid())
+  workspaceId   String
+  contactId     String
+  agentId       String?
+  wamid         String?     @unique // WhatsApp message ID from Meta
+  senderType    SenderType
+  type          MessageType @default(TEXT)
+  content       String
+  mediaUrl      String?
+  status        MessageStatus @default(SENT)
+  isRead        Boolean     @default(false)
+  timestamp     DateTime    @default(now())
+
+  workspace  Workspace @relation(fields: [workspaceId], references: [id])
+  contact    Contact   @relation(fields: [contactId], references: [id])
+  agent      User?     @relation("SentMessages", fields: [agentId], references: [id])
+
+  @@index([contactId, timestamp])
+  @@index([workspaceId, timestamp])
+  @@map("messages")
+}
+
+enum SenderType {
+  AGENT
+  CUSTOMER
+  SYSTEM
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  AUDIO
+  VIDEO
+  DOCUMENT
+  TEMPLATE
+}
+
+enum MessageStatus {
+  SENDING
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+// ─── Notes (private, not sent to customer) ───────────────────────────────────
+model Note {
+  id        String   @id @default(uuid())
+  contactId String
+  authorId  String
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  contact Contact @relation(fields: [contactId], references: [id])
+  author  User    @relation(fields: [authorId], references: [id])
+
+  @@map("notes")
+}
+
+// ─── Kanban Stages ───────────────────────────────────────────────────────────
+model KanbanStage {
+  id          String  @id @default(uuid())
+  workspaceId String
+  name        String
+  color       String  @default("#2e8535")
+  position    Int
+  isDefault   Boolean @default(false)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+  contacts  Contact[]
+
+  @@map("kanban_stages")
+}
+
+// ─── Tags ────────────────────────────────────────────────────────────────────
+model Tag {
+  id          String @id @default(uuid())
+  workspaceId String
+  name        String
+  color       String @default("#6366f1")
+
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id])
+  contactTags ContactTag[]
+
+  @@unique([workspaceId, name])
+  @@map("tags")
+}
+
+model ContactTag {
+  contactId String
+  tagId     String
+
+  contact Contact @relation(fields: [contactId], references: [id])
+  tag     Tag     @relation(fields: [tagId], references: [id])
+
+  @@id([contactId, tagId])
+  @@map("contact_tags")
+}
+
+// ─── Quick Replies ────────────────────────────────────────────────────────────
+model QuickReply {
+  id          String @id @default(uuid())
+  workspaceId String
+  shortcut    String // e.g. "/hello"
+  title       String
+  content     String
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+
+  @@unique([workspaceId, shortcut])
+  @@map("quick_replies")
+}
+
+// ─── Invoices ─────────────────────────────────────────────────────────────
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+model Invoice {
+  id            String          @id @default(uuid())
+  workspaceId   String
+  contactId     String
+  invoiceNumber String          // e.g. "INV-001"
+  description   String?         // e.g. "Website Design Services"
+  amount        Float           // Total amount
+  status        InvoiceStatus   @default(DRAFT)
+  dueDate       DateTime?
+  sentAt        DateTime?
+  paidAt        DateTime?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  workspace     Workspace       @relation(fields: [workspaceId], references: [id])
+  contact       Contact         @relation(fields: [contactId], references: [id])
+  items         InvoiceItem[]
+
+  @@unique([workspaceId, invoiceNumber])
+  @@index([contactId])
+  @@index([workspaceId, status])
+  @@map("invoices")
+}
+
+model InvoiceItem {
+  id        String   @id @default(uuid())
+  invoiceId String
+  description String
+  quantity  Float
+  unitPrice Float
+  total     Float   // quantity * unitPrice
+  createdAt DateTime @default(now())
+
+  invoice   Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+  @@map("invoice_items")
+}
+
+// ─── Meta OAuth Tokens ────────────────────────────────────────────────────────
+model MetaOAuthToken {
+  id                String   @id @default(uuid())
+  workspaceId       String   @unique
+  accessToken       String   // Long-lived token (plaintext for now, encrypt in prod)
+  phoneNumberId     String   // Meta Phone Number ID
+  businessAccountId String?  // FOR FUTURE: WhatsApp Business Account ID
+  expiresAt         DateTime?
+  refreshToken      String?  // FOR FUTURE: Token refresh flow
+  connectedAt       DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("meta_oauth_tokens")
+}
+
+// ─── Activity Timeline ─────────────────────────────────────────────────────────
+enum ActivityType {
+  CONTACT_CREATED
+  CONTACT_UPDATED
+  MESSAGE_SENT
+  MESSAGE_RECEIVED
+  NOTE_ADDED
+  INVOICE_CREATED
+  INVOICE_SENT
+  INVOICE_PAID
+  STAGE_CHANGED
+  TAG_ADDED
+  TAG_REMOVED
+  EMAIL_SENT
+  CALL_LOGGED
+}
+
+model Activity {
+  id            String       @id @default(uuid())
+  workspaceId   String
+  contactId     String
+  activityType  ActivityType
+  actorId       String       // User who triggered this activity
+  title         String       // e.g., "Invoice #INV-001 sent"
+  description   String?      // Optional details
+  metadata      Json?        // Flexible storage: { messageId, invoiceId, oldStage, newStage, etc }
+  timestamp     DateTime     @default(now())
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+  contact   Contact   @relation(fields: [contactId], references: [id])
+  actor     User      @relation(fields: [actorId], references: [id])
+
+  @@index([contactId, timestamp])
+  @@index([workspaceId, timestamp])
+  @@map("activities")
+}
+
+// ─── Tasks & Reminders ────────────────────────────────────────────────────────
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  COMPLETED
+  SNOOZED
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum TaskType {
+  MANUAL
+  AUTO_PAYMENT_DUE
+  AUTO_NO_REPLY_24H
+  AUTO_INVOICE_SENT
+  AUTO_INVOICE_OVERDUE
+}
+
+model Task {
+  id            String       @id @default(uuid())
+  workspaceId   String
+  contactId     String
+  createdBy     String       // User who created this task
+  title         String
+  description   String?
+  dueDate       DateTime
+  status        TaskStatus   @default(TODO)
+  priority      TaskPriority @default(MEDIUM)
+  type          TaskType     @default(MANUAL)
+  reminderSent  Boolean      @default(false)
+  completedAt   DateTime?
+  snoozedUntil  DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+  contact   Contact   @relation(fields: [contactId], references: [id])
+  creator   User      @relation("CreatedTasks", fields: [createdBy], references: [id])
+
+  @@index([workspaceId, status, dueDate])
+  @@index([contactId])
+  @@map("tasks")
+}
+
+// ─── Email Communication ──────────────────────────────────────────────────────
+enum EmailStatus {
+  DRAFT
+  SENT
+  BOUNCED
+  FAILED
+}
+
+model Email {
+  id          String      @id @default(uuid())
+  workspaceId String
+  contactId   String
+  from        String      // Workspace admin email
+  to          String      // Contact email
+  subject     String
+  body        String
+  status      EmailStatus @default(DRAFT)
+  sentAt      DateTime?
+  openedAt    DateTime?   // FOR FUTURE: Tracking pixel
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+  contact   Contact   @relation(fields: [contactId], references: [id])
+
+  @@index([contactId, sentAt])
+  @@index([workspaceId, status])
+  @@map("emails")
+}
+
+// ─── User Relations Extensions ────────────────────────────────────────────────
+// User model extended to include activities and tasks they created
+// (already defined above, just adding to User relations)
