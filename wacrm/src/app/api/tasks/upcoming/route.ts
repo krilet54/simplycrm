@@ -14,26 +14,31 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const hoursAhead = parseInt(searchParams.get('hoursAhead') ?? '24');
 
-  // Get tasks due in next N hours (for reminders)
-  const now = new Date();
-  const futureTime = new Date(now.getTime() + hoursAhead * 60 * 60 * 1000);
+  try {
+    const now = new Date();
+    const upcomingDate = new Date();
+    upcomingDate.setHours(upcomingDate.getHours() + hoursAhead);
 
-  const upcomingTasks = await db.task.findMany({
-    where: {
-      workspaceId: dbUser.workspaceId,
-      status: { in: ['TODO', 'IN_PROGRESS', 'SNOOZED'] },
-      dueDate: {
-        gte: now,
-        lte: futureTime,
+    const tasks = await db.task.findMany({
+      where: {
+        workspaceId: dbUser.workspaceId,
+        status: { in: ['TODO', 'IN_PROGRESS', 'SNOOZED'] },
+        dueDate: { gte: now, lte: upcomingDate },
+        reminderSent: false,
       },
-      reminderSent: false, // Only tasks we haven't reminded about yet
-    },
-    include: {
-      contact: { select: { id: true, name: true, phoneNumber: true } },
-      creator: { select: { id: true, name: true } },
-    },
-    orderBy: { dueDate: 'asc' },
-  });
+      include: {
+        contact: { select: { id: true, name: true, phoneNumber: true } },
+        creator: { select: { id: true, name: true } },
+      },
+      orderBy: { dueDate: 'asc' },
+    });
 
-  return NextResponse.json({ tasks: upcomingTasks });
+    return NextResponse.json({ tasks });
+  } catch (error) {
+    console.error('Failed to fetch upcoming tasks:', error);
+    return NextResponse.json(
+      { error: 'Failed to fetch tasks' },
+      { status: 500 }
+    );
+  }
 }

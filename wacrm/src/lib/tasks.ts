@@ -1,94 +1,118 @@
 // src/lib/tasks.ts
 import { db } from '@/lib/db';
-
-/**
- * Mark task reminder as sent
- */
-export async function markReminderSent(taskId: string) {
-  return db.task.update({
-    where: { id: taskId },
-    data: { reminderSent: true },
-  });
-}
+import { logActivity } from '@/lib/activity';
 
 /**
  * Create auto-task for invoice payment due
  */
-export async function createPaymentDueTask(invoiceId: string, contactId: string, workspaceId: string, dueDate: Date) {
-  const config = await db.workspace.findUnique({
-    where: { id: workspaceId },
-    select: { users: { where: { role: 'OWNER' }, take: 1 } },
-  });
+export async function createPaymentDueTask(
+  workspaceId: string,
+  contactId: string,
+  invoiceId: string,
+  dueDate: Date
+) {
+  try {
+    const taskDueDate = new Date(dueDate);
+    taskDueDate.setDate(taskDueDate.getDate() - 1);
 
-  const owner = config?.users[0];
-  if (!owner) return;
+    const workspace = await db.workspace.findUnique({
+      where: { id: workspaceId },
+      include: { users: { where: { role: { in: ['OWNER', 'ADMIN'] } }, take: 1 } },
+    });
 
-  // Calculate reminder date (1 day before due date)
-  const reminderDate = new Date(dueDate);
-  reminderDate.setDate(reminderDate.getDate() - 1);
+    if (!workspace?.users[0]) return;
 
-  return db.task.create({
-    data: {
+    const task = await db.task.create({
+      data: {
+        workspaceId,
+        contactId,
+        createdBy: workspace.users[0].id,
+        title: `Payment due for invoice #${invoiceId}`,
+        description: `Follow up on invoice payment due on ${dueDate.toLocaleDateString()}`,
+        dueDate: taskDueDate,
+        priority: 'HIGH',
+        type: 'AUTO_PAYMENT_DUE',
+      },
+    });
+
+    await logActivity({
       workspaceId,
       contactId,
-      createdBy: owner.id,
-      title: `Payment due: Invoice #${invoiceId}`,
-      description: 'Follow up on invoice payment',
-      dueDate: reminderDate,
-      type: 'AUTO_PAYMENT_DUE',
-      priority: 'HIGH',
-    },
-  });
+      activityType: 'CONTACT_UPDATED',
+      actorId: workspace.users[0].id,
+      title: 'Auto-task created: Payment reminder',
+      description: `Invoice #${invoiceId}`,
+      metadata: { taskId: task.id, invoiceId },
+    });
+
+    return task;
+  } catch (error) {
+    console.error('Failed to create payment due task:', error);
+  }
 }
 
 /**
- * Create auto-task for no reply after 24h
+ * Create auto-task for no-reply after 24h
  */
-export async function createNoReplyTask(contactId: string, workspaceId: string, lastMessageTime: Date) {
-  const config = await db.workspace.findUnique({
-    where: { id: workspaceId },
-    select: { users: { where: { role: 'OWNER' }, take: 1 } },
-  });
+export async function createNoReplyTask(
+  workspaceId: string,
+  contactId: string,
+  lastMessageId: string
+) {
+  try {
+    const dueDate = new Date();
+    dueDate.setHours(dueDate.getHours() + 24);
 
-  const owner = config?.users[0];
-  if (!owner) return;
+    const contact = await db.contact.findUnique({ where: { id: contactId } });
+    if (!contact) return;
 
-  // Task due 24h after last message
-  const dueDate = new Date(lastMessageTime);
-  dueDate.setDate(dueDate.getDate() + 1);
+    const workspace = await db.workspace.findUnique({
+      where: { id: workspaceId },
+      include: { users: { where: { role: { in: ['OWNER', 'ADMIN'] } }, take: 1 } },
+    });
 
-  return db.task.create({
-    data: {
+    if (!workspace?.users[0]) return;
+
+    const task = await db.task.create({
+      data: {
+        workspaceId,
+        contactId,
+        createdBy: workspace.users[0].id,
+        title: `Follow up with ${contact.name || contact.phoneNumber}`,
+        description: 'No response in 24 hours. Send follow-up message.',
+        dueDate,
+        priority: 'MEDIUM',
+        type: 'AUTO_NO_REPLY_24H',
+      },
+    });
+
+    await logActivity({
       workspaceId,
       contactId,
-      createdBy: owner.id,
-      title: 'Follow up - No reply for 24h',
-      description: 'Customer has not responded. Consider sending a follow-up message.',
-      dueDate,
-      type: 'AUTO_NO_REPLY_24H',
-      priority: 'MEDIUM',
-    },
-  });
+      activityType: 'CONTACT_UPDATED',
+      actorId: workspace.users[0].id,
+      title: 'Auto-task created: No-reply follow-up',
+      description: '24 hours since last message',
+      metadata: { taskId: task.id, lastMessageId },
+    });
+
+    return task;
+  } catch (error) {
+    console.error('Failed to create no-reply task:', error);
+  }
 }
 
 /**
- * Get tasks with filter options
+ * Get workspace tasks with filters
  */
 export async function getWorkspaceTasks(
   workspaceId: string,
-  filters?: {
-    status?: string;
-    priority?: string;
-    contactId?: string;
-    type?: string;
-  }
+  status?: string,
+  priority?: string
 ) {
   const where: any = { workspaceId };
-
-  if (filters?.status) where.status = filters.status;
-  if (filters?.priority) where.priority = filters.priority;
-  if (filters?.contactId) where.contactId = filters.contactId;
-  if (filters?.type) where.type = filters.type;
+  if (status) where.status = status;
+  if (priority) where.priority = priority;
 
   return db.task.findMany({
     where,
@@ -101,42 +125,39 @@ export async function getWorkspaceTasks(
 }
 
 /**
- * Get task statistics for a workspace
+ * Get task statistics
  */
 export async function getTaskStats(workspaceId: string) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
   const [totalTasks, completedToday, pastDue, overdue] = await Promise.all([
-    db.task.count({ where: { workspaceId, status: { in: ['TODO', 'IN_PROGRESS'] } } }),
+    db.task.count({ where: { workspaceId, status: { not: 'COMPLETED' } } }),
     db.task.count({
       where: {
         workspaceId,
         status: 'COMPLETED',
-        completedAt: {
-          gte: new Date(new Date().setHours(0, 0, 0, 0)),
-        },
+        completedAt: { gte: today, lt: tomorrow },
       },
     }),
     db.task.count({
       where: {
         workspaceId,
         status: { in: ['TODO', 'IN_PROGRESS'] },
-        dueDate: { lt: new Date() },
+        dueDate: { lt: today },
       },
     }),
     db.task.count({
       where: {
         workspaceId,
         status: { in: ['TODO', 'IN_PROGRESS'] },
-        dueDate: {
-          lt: new Date(new Date().setDate(new Date().getDate() - 1)),
-        },
+        dueDate: { gte: today, lt: tomorrow },
       },
     }),
   ]);
 
-  return {
-    totalTasks,
-    completedToday,
-    pastDue,
-    overdue,
-  };
+  return { totalTasks, completedToday, pastDue, overdue };
 }
