@@ -12,5 +12,5 @@ export default async function HomePage() {
   const dbUser = await db.user.findUnique({ where: { supabaseId: user.id } });
   if (!dbUser) redirect('/onboarding');
 
-  redirect('/dashboard/inbox');
+  redirect('/dashboard');
 }

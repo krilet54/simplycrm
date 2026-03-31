@@ -118,7 +118,10 @@ export default function ContactsClient({ contacts: init, tags, stages }: Props) 
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
-        if (!res.ok) throw new Error((await res.json()).error);
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(typeof data.error === 'string' ? data.error : JSON.stringify(data.error));
+        }
         const { contact } = await res.json();
         setContacts((prev) => prev.map((c) => (c.id === contact.id ? contact : c)));
         toast.success('Contact updated');
@@ -131,14 +134,18 @@ export default function ContactsClient({ contacts: init, tags, stages }: Props) 
             ...payload,
           }),
         });
-        if (!res.ok) throw new Error((await res.json()).error);
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(typeof data.error === 'string' ? data.error : JSON.stringify(data.error));
+        }
         const { contact } = await res.json();
         setContacts((prev) => [contact, ...prev]);
         toast.success('Contact added');
       }
       setShowModal(false);
     } catch (err) {
-      toast.error((err as Error).message);
+      const message = err instanceof Error ? err.message : 'Failed to save contact';
+      toast.error(message);
     } finally {
       setFLoading(false);
     }
