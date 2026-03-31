@@ -4,6 +4,8 @@
 import { useState } from 'react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
+import CSVModal from '@/components/csv/CSVModal';
+import DuplicateModal from '@/components/duplicates/DuplicateModal';
 import type { ContactType, TagType, KanbanStageType, ContactSource } from '@/types';
 
 interface Props {
@@ -28,6 +30,8 @@ export default function ContactsClient({ contacts: init, tags, stages }: Props) 
   const [filterTag,   setFilterTag]   = useState('');
   const [filterStage, setFilterStage] = useState('');
   const [showModal,   setShowModal]   = useState(false);
+  const [showCSVModal,  setShowCSVModal] = useState(false);
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   const [editTarget,  setEditTarget]  = useState<ContactType | null>(null);
 
   // Form state
@@ -181,6 +185,18 @@ export default function ContactsClient({ contacts: init, tags, stages }: Props) 
             <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
           </svg>
           Add Contact
+        </button>
+        <button onClick={() => setShowCSVModal(true)} className="btn-secondary flex items-center gap-2">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+          </svg>
+          CSV
+        </button>
+        <button onClick={() => setShowDuplicateModal(true)} className="btn-secondary flex items-center gap-2">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M7 18c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zM17 8c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/><path d="M9 9h6M9 15h6"/>
+          </svg>
+          Duplicates
         </button>
       </div>
 
@@ -530,6 +546,35 @@ export default function ContactsClient({ contacts: init, tags, stages }: Props) 
             </div>
           </div>
         </div>
+      )}
+
+      {/* CSV Modal */}
+      {showCSVModal && (
+        <CSVModal
+          onClose={() => setShowCSVModal(false)}
+          onImportSuccess={() => {
+            setShowCSVModal(false);
+            // Refresh contacts
+            fetch('/api/contacts')
+              .then((r) => r.json())
+              .then((data) => setContacts(data.contacts || []))
+              .catch((e) => toast.error('Failed to refresh contacts'));
+          }}
+        />
+      )}
+
+      {/* Duplicate Modal */}
+      {showDuplicateModal && (
+        <DuplicateModal
+          onClose={() => setShowDuplicateModal(false)}
+          onMergeSuccess={() => {
+            // Refresh contacts after merge
+            fetch('/api/contacts')
+              .then((r) => r.json())
+              .then((data) => setContacts(data.contacts || []))
+              .catch((e) => toast.error('Failed to refresh contacts'));
+          }}
+        />
       )}
     </div>
   );

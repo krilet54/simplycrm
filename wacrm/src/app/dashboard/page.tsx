@@ -1,128 +1,114 @@
-// src/app/dashboard/page.tsx
-import { redirect } from 'next/navigation';
-import { createSupabaseServerClient } from '@/lib/supabase-server';
+import { getAuthenticatedUser } from '@/lib/auth';
 import { db } from '@/lib/db';
-import { getRecentActivities } from '@/lib/activity';
 import DashboardClient from '@/components/dashboard/DashboardClient';
 
 export default async function DashboardPage() {
-  const supabase = createSupabaseServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { dbUser, workspace } = await getAuthenticatedUser();
 
-  if (!user) redirect('/login');
+  // Fetch key metrics
+  const [newMessagesCount, unpaidInvoicesCount, tasksToday, completedTasksMonth] = await Promise.all([
+    db.message.count({
+      where: {
+        workspaceId: workspace.id,
+        timestamp: {
+          gte: new Date(new Date().setHours(0, 0, 0, 0)),
+        },
+      },
+    }),
+    db.invoice.count({
+      where: {
+        workspaceId: workspace.id,
+        status: { in: ['SENT', 'OVERDUE'] },
+      },
+    }),
+    db.task.count({
+      where: {
+        workspaceId: workspace.id,
+        status: { in: ['TODO', 'IN_PROGRESS'] },
+        dueDate: {
+          gte: new Date(new Date().setHours(0, 0, 0, 0)),
+          lte: new Date(new Date().setHours(23, 59, 59, 999)),
+        },
+      },
+    }),
+    db.task.count({
+      where: {
+        workspaceId: workspace.id,
+        status: 'COMPLETED',
+        completedAt: {
+          gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+        },
+      },
+    }),
+  ]);
 
-  const dbUser = await db.user.findUnique({
-    where: { supabaseId: user.id },
-    include: { workspace: true },
-  });
-
-  if (!dbUser) redirect('/login');
-
-  // Fetch dashboard metrics
-  const workspaceId = dbUser.workspaceId;
-
-  // Count new messages today
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const newMessagesCount = await db.message.count({
-    where: {
-      workspaceId,
-      senderType: 'CUSTOMER',
-      timestamp: { gte: today },
-    },
-  });
-
-  // Count unpaid invoices
-  const unpaidInvoicesCount = await db.invoice.count({
-    where: {
-      workspaceId,
-      status: { in: ['SENT', 'OVERDUE'] },
-    },
-  });
-
-  // Count tasks due today
-  const tasksoDueToday = await db.task.count({
-    where: {
-      workspaceId,
-      status: { in: ['TODO', 'IN_PROGRESS'] },
-      dueDate: { gte: today, lt: new Date(today.getTime() + 24 * 60 * 60 * 1000) },
-    },
-  });
-
-  // Calculate pipeline total (sum of estimatedValue for non-Closed Lost contacts)
-  const closedLostStage = await db.kanbanStage.findFirst({
-    where: { workspaceId, name: { contains: 'Closed', mode: 'insensitive' } },
-  });
-
-  const pipelineContacts = await db.contact.findMany({
-    where: {
-      workspaceId,
-      estimatedValue: { not: null },
-      kanbanStageId: closedLostStage?.id ? { not: closedLostStage.id } : undefined,
-    },
+  // Pipeline stats
+  const contacts = await db.contact.findMany({
+    where: { workspaceId: workspace.id, deletedAt: null },
     select: { estimatedValue: true },
   });
 
-  const pipelineTotal = pipelineContacts.reduce((sum, c) => sum + (c.estimatedValue || 0), 0);
-  const activeDeals = pipelineContacts.length;
+  const pipelineTotal = contacts.reduce((sum, c) => sum + (c.estimatedValue || 0), 0);
+  const activeDeals = contacts.filter((c) => c.estimatedValue).length;
   const avgDeal = activeDeals > 0 ? Math.round(pipelineTotal / activeDeals / 100) * 100 : 0;
 
-  // Count new contacts this month
-  const monthStart = new Date();
-  monthStart.setDate(1);
-  monthStart.setHours(0, 0, 0, 0);
-
+  // New contacts this month
   const newContactsMonth = await db.contact.count({
     where: {
-      workspaceId,
-      createdAt: { gte: monthStart },
+      workspaceId: workspace.id,
+      deletedAt: null,
+      createdAt: {
+        gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+      },
     },
   });
 
-  // Count completed tasks this month
-  const completedTasksMonth = await db.task.count({
-    where: {
-      workspaceId,
-      status: 'COMPLETED',
-      completedAt: { gte: monthStart },
-    },
-  });
-
-  // Get tasks due in next 7 days
-  const daysFromNow = new Date();
-  daysFromNow.setDate(daysFromNow.getDate() + 7);
+  // Upcoming tasks (next 7 days)
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 7);
 
   const upcomingTasks = await db.task.findMany({
     where: {
-      workspaceId,
-      status: { in: ['TODO', 'IN_PROGRESS', 'SNOOZED'] },
-      dueDate: { lte: daysFromNow },
+      workspaceId: workspace.id,
+      status: { in: ['TODO', 'IN_PROGRESS'] },
+      dueDate: {
+        gte: new Date(),
+        lte: tomorrow,
+      },
     },
     include: {
       contact: { select: { id: true, name: true, phoneNumber: true } },
-      creator: { select: { id: true, name: true } },
     },
     orderBy: { dueDate: 'asc' },
+  });
+
+  // Recent activities
+  const recentActivities = await db.activity.findMany({
+    where: { workspaceId: workspace.id },
+    include: {
+      actor: { select: { id: true, name: true } },
+      contact: { select: { id: true, name: true, phoneNumber: true } },
+    },
+    orderBy: { createdAt: 'desc' },
     take: 10,
   });
 
-  // Get recent activities
-  const recentActivities = await getRecentActivities(workspaceId, 10);
-
-  const dashboardData = {
-    newMessagesCount,
-    unpaidInvoicesCount,
-    tasksoDueToday,
-    pipelineTotal,
-    activeDeals,
-    avgDeal,
-    newContactsMonth,
-    completedTasksMonth,
-    upcomingTasks,
-    recentActivities,
-    currentUser: dbUser,
-    workspace: dbUser.workspace,
-  };
-
-  return <DashboardClient data={dashboardData} />;
+  return (
+    <DashboardClient
+      data={{
+        newMessagesCount,
+        unpaidInvoicesCount,
+        tasksoDueToday: tasksToday,
+        completedTasksMonth,
+        pipelineTotal,
+        activeDeals,
+        avgDeal,
+        newContactsMonth,
+        upcomingTasks: upcomingTasks as any,
+        recentActivities: recentActivities as any,
+        currentUser: dbUser,
+        workspace,
+      }}
+    />
+  );
 }

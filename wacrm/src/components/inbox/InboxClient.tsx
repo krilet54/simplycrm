@@ -5,6 +5,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { format, isToday, isYesterday } from 'date-fns';
 import toast from 'react-hot-toast';
 import ConversationClassifier from './ConversationClassifier';
+import ActivityTab from './ActivityTab';
+import EmailModal from '@/components/emails/EmailModal';
 import type { ContactType, MessageType2, NoteType, QuickReplyType, InvoiceType } from '@/types';
 
 interface Props {
@@ -49,8 +51,9 @@ export default function InboxClient({ initialContacts, quickReplies, agents, cur
   const [sending,          setSending]          = useState(false);
   const [showQuickReplies, setShowQuickReplies] = useState(false);
   const [quickFilter,      setQuickFilter]      = useState('');
-  const [rightPanel,       setRightPanel]       = useState<'info' | 'notes' | 'invoices'>('info');
+  const [rightPanel,       setRightPanel]       = useState<'info' | 'notes' | 'invoices' | 'activity'>('info');
   const [search,           setSearch]           = useState('');
+  const [showEmailModal,   setShowEmailModal]   = useState(false);
   const [dismissedZeroMsgWarnings, setDismissedZeroMsgWarnings] = useState<Set<string>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef       = useRef<HTMLTextAreaElement>(null);
@@ -407,6 +410,12 @@ export default function InboxClient({ initialContacts, quickReplies, agents, cur
                 Info
               </button>
               <button
+                onClick={() => setRightPanel('activity')}
+                className={`btn-ghost text-xs ${rightPanel === 'activity' ? 'bg-gray-100' : ''}`}
+              >
+                Activity
+              </button>
+              <button
                 onClick={() => setRightPanel('notes')}
                 className={`btn-ghost text-xs ${rightPanel === 'notes' ? 'bg-gray-100' : ''}`}
               >
@@ -417,6 +426,13 @@ export default function InboxClient({ initialContacts, quickReplies, agents, cur
                 className={`btn-ghost text-xs ${rightPanel === 'invoices' ? 'bg-gray-100' : ''}`}
               >
                 Invoices {invoices.length > 0 && `(${invoices.length})`}
+              </button>
+              <button
+                onClick={() => setShowEmailModal(true)}
+                className="btn-ghost text-xs"
+                title="Send email"
+              >
+                ✉️
               </button>
               {selectedContact.contactTags?.map((ct) => (
                 <span
@@ -700,6 +716,8 @@ export default function InboxClient({ initialContacts, quickReplies, agents, cur
                 </div>
               )}
             </div>
+          ) : rightPanel === 'activity' ? (
+            <ActivityTab contactId={selectedContact.id} />
           ) : rightPanel === 'notes' ? (
             /* Notes panel */
             <div className="flex flex-col h-full">
@@ -881,6 +899,20 @@ export default function InboxClient({ initialContacts, quickReplies, agents, cur
             </div>
           )}
         </div>
+      )}
+
+      {/* Email Modal */}
+      {showEmailModal && selectedContact && (
+        <EmailModal
+          contactId={selectedContact.id}
+          contactEmail={selectedContact.email || ''}
+          contactName={selectedContact.name || selectedContact.phoneNumber}
+          onClose={() => setShowEmailModal(false)}
+          onEmailSent={() => {
+            toast.success('Email sent!');
+            setShowEmailModal(false);
+          }}
+        />
       )}
     </div>
   );

@@ -1,29 +1,60 @@
 'use client';
 
 import { useState } from 'react';
-import { X, Upload, Download } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { X, Download, Upload } from 'lucide-react';
 
 interface CSVModalProps {
   onClose: () => void;
-  onImportSuccess: () => void;
+  onImportSuccess?: () => void;
 }
 
 export default function CSVModal({ onClose, onImportSuccess }: CSVModalProps) {
   const [mode, setMode] = useState<'import' | 'export'>('import');
+  const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
-  const [csvContent, setCSVContent] = useState('');
-  const [importResults, setImportResults] = useState<any>(null);
+  const [results, setResults] = useState<any>(null);
 
-  const handleExport = async () => {
+  async function handleImport() {
+    if (!file) {
+      toast.error('Please select a CSV file');
+      return;
+    }
+
     setLoading(true);
-    setError('');
     try {
-      const response = await fetch('/api/csv/export');
-      if (!response.ok) throw new Error('Export failed');
+      const content = await file.text();
+      const res = await fetch('/api/csv/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ csvContent: content }),
+      });
 
-      const blob = await response.blob();
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Import failed');
+      }
+
+      const data = await res.json();
+      setResults(data.results);
+      toast.success(`Imported ${data.results.imported} contacts`);
+      if (onImportSuccess) {
+        setTimeout(onImportSuccess, 1000);
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Import failed');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleExport() {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/csv/export');
+      if (!res.ok) throw new Error('Export failed');
+
+      const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -32,194 +63,140 @@ export default function CSVModal({ onClose, onImportSuccess }: CSVModalProps) {
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
-
-      setSuccess('Contacts exported successfully!');
+      toast.success('Contacts exported');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Export failed');
+      toast.error('Export failed');
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      setCSVContent(event.target?.result as string);
-    };
-    reader.readAsText(file);
-  };
-
-  const handleImport = async () => {
-    if (!csvContent) {
-      setError('Please upload a CSV file');
-      return;
-    }
-
-    setLoading(true);
-    setError('');
-    setImportResults(null);
-
-    try {
-      const response = await fetch('/api/csv/import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ csvContent }),
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Import failed');
-      }
-
-      const data = await response.json();
-      setImportResults(data.results);
-      setSuccess(`Imported ${data.results.imported} contacts!`);
-      setTimeout(() => {
-        onImportSuccess();
-        onClose();
-      }, 2000);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Import failed');
-    } finally {
-      setLoading(false);
-    }
-  };
+  }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-semibold">CSV Operations</h2>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b border-gray-200">
+          <h2 className="text-lg font-bold text-gray-900">CSV Manager</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-            <X className="w-5 h-5" />
+            <X size={20} />
           </button>
         </div>
 
-        {/* Mode Selector */}
-        <div className="flex gap-4 mb-6">
+        {/* Mode toggle */}
+        <div className="flex gap-2 p-6 border-b border-gray-200 bg-gray-50">
           <button
-            onClick={() => setMode('import')}
-            className={`flex items-center gap-2 px-4 py-2 rounded transition ${
+            onClick={() => { setMode('import'); setResults(null); setFile(null); }}
+            className={`flex-1 py-2 px-3 rounded-lg font-medium transition ${
               mode === 'import'
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-200 text-gray-800 hover:bg-gray-300'
+                ? 'bg-forest-500 text-white'
+                : 'bg-white border border-gray-200 text-gray-700'
             }`}
           >
-            <Upload className="w-4 h-4" />
+            <Upload size={16} className="inline mr-2" />
             Import
           </button>
           <button
-            onClick={() => setMode('export')}
-            className={`flex items-center gap-2 px-4 py-2 rounded transition ${
+            onClick={() => { setMode('export'); setResults(null); }}
+            className={`flex-1 py-2 px-3 rounded-lg font-medium transition ${
               mode === 'export'
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-200 text-gray-800 hover:bg-gray-300'
+                ? 'bg-forest-500 text-white'
+                : 'bg-white border border-gray-200 text-gray-700'
             }`}
           >
-            <Download className="w-4 h-4" />
+            <Download size={16} className="inline mr-2" />
             Export
           </button>
         </div>
 
-        {error && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded">
-            {error}
-          </div>
-        )}
-
-        {success && (
-          <div className="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded">
-            {success}
-          </div>
-        )}
-
-        {/* Import View */}
-        {mode === 'import' && (
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Upload CSV File
-              </label>
-              <input
-                type="file"
-                accept=".csv"
-                onChange={handleFileUpload}
-                className="w-full border border-gray-300 rounded px-3 py-2"
-              />
-              <p className="text-xs text-gray-600 mt-2">
-                Required columns: phoneNumber. Optional: name, email, source, interest, estimatedValue
+        {/* Content */}
+        <div className="p-6 space-y-4">
+          {mode === 'import' ? (
+            <>
+              {!results ? (
+                <>
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
+                    <Upload size={32} className="mx-auto mb-3 text-gray-400" />
+                    <p className="text-gray-700 font-medium mb-2">Choose a CSV file</p>
+                    <p className="text-sm text-gray-500 mb-4">
+                      Required columns: phoneNumber | Optional: name, email, source, interest, estimatedValue
+                    </p>
+                    <input
+                      type="file"
+                      accept=".csv"
+                      onChange={(e) => setFile(e.target.files?.[0] || null)}
+                      className="hidden"
+                      id="csv-file"
+                    />
+                    <label
+                      htmlFor="csv-file"
+                      className="btn-secondary inline-block cursor-pointer"
+                    >
+                      Select File
+                    </label>
+                    {file && (
+                      <p className="text-sm text-green-600 mt-3">
+                        ✓ {file.name}
+                      </p>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                    <p className="text-green-800 font-medium">
+                      ✓ Imported: {results.imported} contacts
+                    </p>
+                  </div>
+                  {results.duplicates > 0 && (
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                      <p className="text-yellow-800 font-medium">
+                        ⚠ Duplicates skipped: {results.duplicates}
+                      </p>
+                    </div>
+                  )}
+                  {results.errors && results.errors.length > 0 && (
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-4 max-h-48 overflow-y-auto">
+                      <p className="text-red-800 font-medium mb-2">Errors:</p>
+                      <ul className="text-xs text-red-700 space-y-1">
+                        {results.errors.slice(0, 5).map((err: string, i: number) => (
+                          <li key={i}>• {err}</li>
+                        ))}
+                        {results.errors.length > 5 && (
+                          <li>... and {results.errors.length - 5} more</li>
+                        )}
+                      </ul>
+                    </div>
+                  )}
+                </>
+              )}
+            </>
+          ) : (
+            <>
+              <p className="text-gray-700">
+                Download all contacts as CSV for backup or external use.
               </p>
-            </div>
-
-            {importResults && (
-              <div className="space-y-2 p-3 bg-blue-50 rounded">
-                <p className="text-sm font-medium">Import Results:</p>
-                <p className="text-sm">✅ Imported: {importResults.imported}</p>
-                <p className="text-sm">⚠️ Duplicates: {importResults.duplicates}</p>
-                {importResults.errors.length > 0 && (
-                  <details className="text-sm">
-                    <summary className="cursor-pointer font-medium">
-                      Errors ({importResults.errors.length})
-                    </summary>
-                    <ul className="mt-2 ml-4 space-y-1">
-                      {importResults.errors.slice(0, 5).map((err: string, i: number) => (
-                        <li key={i} className="text-red-600">
-                          {err}
-                        </li>
-                      ))}
-                    </ul>
-                  </details>
-                )}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <p className="text-sm text-blue-800">
+                  📥 Includes: Name, Phone, Email, Source, Stage, Tags, Estimated Value
+                </p>
               </div>
-            )}
+            </>
+          )}
+        </div>
 
-            <div className="flex gap-3 pt-4">
-              <button
-                onClick={onClose}
-                className="flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded hover:bg-gray-300 transition"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleImport}
-                disabled={loading || !csvContent}
-                className="flex-1 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:bg-gray-400 transition flex items-center justify-center gap-2"
-              >
-                <Upload className="w-4 h-4" />
-                Import
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Export View */}
-        {mode === 'export' && (
-          <div className="space-y-4">
-            <p className="text-gray-600">
-              Export all contacts as a CSV file. You can then import this file elsewhere or use it for backup.
-            </p>
-
-            <div className="flex gap-3 pt-4">
-              <button
-                onClick={onClose}
-                className="flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded hover:bg-gray-300 transition"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleExport}
-                disabled={loading}
-                className="flex-1 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:bg-gray-400 transition flex items-center justify-center gap-2"
-              >
-                <Download className="w-4 h-4" />
-                Download
-              </button>
-            </div>
-          </div>
-        )}
+        {/* Footer */}
+        <div className="flex gap-3 p-6 border-t border-gray-200 bg-gray-50">
+          <button onClick={onClose} className="btn-secondary flex-1 justify-center">
+            Cancel
+          </button>
+          <button
+            onClick={mode === 'import' ? handleImport : handleExport}
+            disabled={loading || (mode === 'import' && !file && !results)}
+            className="btn-primary flex-1 justify-center"
+          >
+            {loading ? 'Processing...' : mode === 'import' ? 'Import' : 'Download'}
+          </button>
+        </div>
       </div>
     </div>
   );
