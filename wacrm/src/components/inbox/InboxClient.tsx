@@ -54,7 +54,13 @@ export default function InboxClient({ initialContacts, quickReplies, agents, cur
   const [rightPanel,       setRightPanel]       = useState<'info' | 'notes' | 'invoices' | 'activity'>('info');
   const [search,           setSearch]           = useState('');
   const [showEmailModal,   setShowEmailModal]   = useState(false);
+  const [emailInvoice,     setEmailInvoice]     = useState<InvoiceType | null>(null);
   const [dismissedZeroMsgWarnings, setDismissedZeroMsgWarnings] = useState<Set<string>>(new Set());
+  const [showFollowupModal, setShowFollowupModal] = useState(false);
+  const [followupTitle, setFollowupTitle] = useState('');
+  const [followupDate, setFollowupDate] = useState('');
+  const [followupPriority, setFollowupPriority] = useState<'LOW' | 'MEDIUM' | 'HIGH'>('MEDIUM');
+  const [creatingFollowup, setCreatingFollowup] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef       = useRef<HTMLTextAreaElement>(null);
 
@@ -260,6 +266,41 @@ export default function InboxClient({ initialContacts, quickReplies, agents, cur
     setNotes((prev) => prev.filter((n) => n.id !== id));
   }
 
+  async function createFollowup() {
+    if (!selectedContact || !followupTitle.trim() || !followupDate) return;
+    
+    setCreatingFollowup(true);
+    try {
+      const res = await fetch('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contactId: selectedContact.id,
+          title: followupTitle.trim(),
+          description: `Follow-up reminder for ${selectedContact.name || selectedContact.phoneNumber}`,
+          dueDate: new Date(followupDate).toISOString(),
+          priority: followupPriority,
+          type: 'MANUAL',
+        }),
+      });
+      
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to create follow-up');
+      }
+      
+      toast.success('Follow-up reminder created!');
+      setShowFollowupModal(false);
+      setFollowupTitle('');
+      setFollowupDate('');
+      setFollowupPriority('MEDIUM');
+    } catch (err) {
+      toast.error((err as Error).message);
+    } finally {
+      setCreatingFollowup(false);
+    }
+  }
+
   async function moveStage(stageId: string) {
     if (!selectedContact) return;
     await fetch('/api/kanban', {
@@ -357,7 +398,7 @@ export default function InboxClient({ initialContacts, quickReplies, agents, cur
                       {contact.name ?? contact.phoneNumber}
                     </span>
                     {lastMsg && (
-                      <span className="text-[11px] text-gray-400 shrink-0 ml-2">
+                      <span className="text-[11px] text-gray-400 shrink-0 ml-2" suppressHydrationWarning>
                         {formatTime(lastMsg.timestamp)}
                       </span>
                     )}
@@ -432,7 +473,7 @@ export default function InboxClient({ initialContacts, quickReplies, agents, cur
                 className="btn-ghost text-xs"
                 title="Send email"
               >
-                ✉️
+                Email
               </button>
               {selectedContact.contactTags?.map((ct) => (
                 <span
@@ -518,7 +559,7 @@ export default function InboxClient({ initialContacts, quickReplies, agents, cur
                 <div key={msg.id}>
                   {showDate && (
                     <div className="flex justify-center my-2">
-                      <span className="bg-white/70 text-gray-600 text-xs px-3 py-1 rounded-full shadow-sm">
+                      <span className="bg-white/70 text-gray-600 text-xs px-3 py-1 rounded-full shadow-sm" suppressHydrationWarning>
                         {isToday(new Date(msg.timestamp)) ? 'Today'
                           : isYesterday(new Date(msg.timestamp)) ? 'Yesterday'
                           : format(new Date(msg.timestamp), 'dd MMM yyyy')}
@@ -532,7 +573,7 @@ export default function InboxClient({ initialContacts, quickReplies, agents, cur
                       )}
                       <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
                       <div className="flex items-center justify-end gap-1 mt-1">
-                        <span className="text-[11px] text-gray-400">{formatMsgTime(msg.timestamp)}</span>
+                        <span className="text-[11px] text-gray-400" suppressHydrationWarning>{formatMsgTime(msg.timestamp)}</span>
                         {isAgent && <StatusTick status={msg.status} />}
                       </div>
                     </div>
@@ -698,7 +739,7 @@ export default function InboxClient({ initialContacts, quickReplies, agents, cur
               {selectedContact.estimatedValue && (
                 <div>
                   <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Deal value</h4>
-                  <p className="text-lg font-bold text-emerald-600">₦{selectedContact.estimatedValue.toLocaleString()}</p>
+                  <p className="text-lg font-bold text-emerald-600" suppressHydrationWarning>₦{selectedContact.estimatedValue.toLocaleString('en-US')}</p>
                 </div>
               )}
 
@@ -715,6 +756,28 @@ export default function InboxClient({ initialContacts, quickReplies, agents, cur
                   <p className="text-sm text-gray-700 capitalize">{selectedContact.source.replace(/_/g, ' ')}</p>
                 </div>
               )}
+
+              {/* Follow-up Reminder */}
+              <div className="pt-2 border-t border-gray-100">
+                <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Quick Actions</h4>
+                <button
+                  onClick={() => {
+                    setFollowupTitle(`Follow up with ${selectedContact.name || selectedContact.phoneNumber}`);
+                    // Set default to tomorrow at 10am
+                    const tomorrow = new Date();
+                    tomorrow.setDate(tomorrow.getDate() + 1);
+                    tomorrow.setHours(10, 0, 0, 0);
+                    setFollowupDate(tomorrow.toISOString().slice(0, 16));
+                    setShowFollowupModal(true);
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2.5 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg text-amber-700 text-sm font-medium transition-colors"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                  </svg>
+                  Set Follow-up Reminder
+                </button>
+              </div>
             </div>
           ) : rightPanel === 'activity' ? (
             <ActivityTab contactId={selectedContact.id} />
@@ -748,7 +811,7 @@ export default function InboxClient({ initialContacts, quickReplies, agents, cur
                     <div className="flex items-center justify-between mb-1.5">
                       <span className="text-xs font-semibold text-amber-700">{note.author.name}</span>
                       <div className="flex items-center gap-1">
-                        <span className="text-[11px] text-gray-400">{format(new Date(note.createdAt), 'dd MMM, HH:mm')}</span>
+                        <span className="text-[11px] text-gray-400" suppressHydrationWarning>{format(new Date(note.createdAt), 'dd MMM, HH:mm')}</span>
                         {note.authorId === currentUser.id && (
                           <button
                             onClick={() => deleteNote(note.id)}
@@ -821,7 +884,7 @@ export default function InboxClient({ initialContacts, quickReplies, agents, cur
                         {invoice.status}
                       </span>
                     </div>
-                    <div className="text-sm font-bold text-gray-900 mb-1">₦{invoice.amount.toLocaleString()}</div>
+                    <div className="text-sm font-bold text-gray-900 mb-1" suppressHydrationWarning>₦{invoice.amount.toLocaleString('en-US')}</div>
                     {invoice.description && (
                       <p className="text-xs text-gray-600 mb-1.5">{invoice.description}</p>
                     )}
@@ -854,6 +917,28 @@ export default function InboxClient({ initialContacts, quickReplies, agents, cur
                         className="text-[11px] text-forest-600 hover:underline disabled:text-gray-300 disabled:cursor-not-allowed font-medium"
                       >
                         Send WhatsApp
+                      </button>
+                      <span className="text-gray-300">•</span>
+                      <button
+                        onClick={() => {
+                          setEmailInvoice(invoice);
+                          setShowEmailModal(true);
+                        }}
+                        disabled={!selectedContact?.email}
+                        className="text-[11px] text-purple-600 hover:underline disabled:text-gray-300 disabled:cursor-not-allowed font-medium"
+                        title={selectedContact?.email ? 'Send invoice via email' : 'Contact has no email'}
+                      >
+                        Send Email
+                      </button>
+                      <span className="text-gray-300">•</span>
+                      <button
+                        onClick={() => {
+                          // Open PDF in new window for print/save
+                          window.open(`/api/invoices/${invoice.id}?format=pdf`, '_blank');
+                        }}
+                        className="text-[11px] text-blue-600 hover:underline font-medium"
+                      >
+                        Download PDF
                       </button>
                       <span className="text-gray-300">•</span>
                       <button
@@ -907,12 +992,103 @@ export default function InboxClient({ initialContacts, quickReplies, agents, cur
           contactId={selectedContact.id}
           contactEmail={selectedContact.email || ''}
           contactName={selectedContact.name || selectedContact.phoneNumber}
-          onClose={() => setShowEmailModal(false)}
+          onClose={() => {
+            setShowEmailModal(false);
+            setEmailInvoice(null);
+          }}
           onEmailSent={() => {
             toast.success('Email sent!');
             setShowEmailModal(false);
+            setEmailInvoice(null);
           }}
+          initialSubject={emailInvoice ? `Invoice ${emailInvoice.invoiceNumber}` : ''}
+          initialBody={emailInvoice ? `Dear ${selectedContact.name || 'Customer'},\n\nPlease find attached invoice ${emailInvoice.invoiceNumber} for ₦${emailInvoice.amount.toLocaleString('en-US')}.\n\n${emailInvoice.description || ''}\n\nThank you for your business.\n\nBest regards` : ''}
         />
+      )}
+
+      {/* Follow-up Reminder Modal */}
+      {showFollowupModal && selectedContact && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+            <div className="flex items-center justify-between p-4 border-b">
+              <h2 className="text-lg font-semibold text-gray-900">Set Follow-up Reminder</h2>
+              <button
+                onClick={() => setShowFollowupModal(false)}
+                className="text-gray-400 hover:text-gray-600 p-1"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+            <div className="p-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Reminder Title
+                </label>
+                <input
+                  type="text"
+                  value={followupTitle}
+                  onChange={(e) => setFollowupTitle(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-forest-500 focus:border-forest-500"
+                  placeholder="e.g., Call to discuss proposal"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Remind me on
+                </label>
+                <input
+                  type="datetime-local"
+                  value={followupDate}
+                  onChange={(e) => setFollowupDate(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-forest-500 focus:border-forest-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Priority
+                </label>
+                <div className="flex gap-2">
+                  {(['LOW', 'MEDIUM', 'HIGH'] as const).map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setFollowupPriority(p)}
+                      className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                        followupPriority === p
+                          ? p === 'HIGH'
+                            ? 'bg-red-100 border-red-300 text-red-700'
+                            : p === 'MEDIUM'
+                            ? 'bg-amber-100 border-amber-300 text-amber-700'
+                            : 'bg-blue-100 border-blue-300 text-blue-700'
+                          : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowFollowupModal(false)}
+                  className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={createFollowup}
+                  disabled={creatingFollowup || !followupTitle.trim() || !followupDate}
+                  className="flex-1 px-4 py-2.5 bg-forest-600 text-white rounded-lg hover:bg-forest-700 font-medium disabled:opacity-50"
+                >
+                  {creatingFollowup ? 'Creating...' : 'Create Reminder'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

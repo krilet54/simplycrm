@@ -6,12 +6,20 @@ import { sendEmail } from '@/lib/email';
 import { z } from 'zod';
 
 // ── POST /api/emails ───────────────────────────────────────────────────────
+const attachmentSchema = z.object({
+  name: z.string(),
+  type: z.string(),
+  size: z.number(),
+  base64: z.string(),
+});
+
 const createEmailSchema = z.object({
   contactId: z.string().uuid(),
   to: z.string().email(),
   subject: z.string().min(3).max(200),
   body: z.string().min(10).max(5000),
   sendNow: z.boolean().default(false),
+  attachments: z.array(attachmentSchema).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -28,7 +36,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { contactId, to, subject, body: emailBody, sendNow } = parsed.data;
+  const { contactId, to, subject, body: emailBody, sendNow, attachments } = parsed.data;
 
   // Verify contact belongs to workspace
   const contact = await db.contact.findFirst({
@@ -46,7 +54,15 @@ export async function POST(req: NextRequest) {
 
   if (!workspace?.users[0]?.email) {
     return NextResponse.json(
-      { error: 'Workspace email not configured' },
+      { error: 'Workspace email not configured. Please set up an owner email in settings.' },
+      { status: 400 }
+    );
+  }
+
+  // Check if Resend is configured
+  if (sendNow && !process.env.RESEND_API_KEY) {
+    return NextResponse.json(
+      { error: 'Email service not configured. Please add RESEND_API_KEY to your environment.' },
       { status: 400 }
     );
   }
@@ -62,6 +78,7 @@ export async function POST(req: NextRequest) {
         subject,
         body: emailBody,
         actorId: dbUser.id,
+        attachments,
       });
       return NextResponse.json({ email }, { status: 201 });
     } else {
@@ -82,8 +99,9 @@ export async function POST(req: NextRequest) {
     }
   } catch (error) {
     console.error('Email creation failed:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Failed to send email';
     return NextResponse.json(
-      { error: 'Failed to create email' },
+      { error: errorMessage },
       { status: 500 }
     );
   }

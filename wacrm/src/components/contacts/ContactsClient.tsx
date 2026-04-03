@@ -341,9 +341,9 @@ export default function ContactsClient({ contacts: init, tags, stages }: Props) 
                     </div>
                   </td>
                   <td className="px-5 py-3.5">
-                    <span className="text-sm text-gray-600 font-semibold">
+                    <span className="text-sm text-gray-600 font-semibold" suppressHydrationWarning>
                       {contact.estimatedValue
-                        ? `₦${contact.estimatedValue.toLocaleString()}`
+                        ? `₦${contact.estimatedValue.toLocaleString('en-US')}`
                         : <span className="text-gray-300">—</span>
                       }
                     </span>
@@ -352,7 +352,7 @@ export default function ContactsClient({ contacts: init, tags, stages }: Props) 
                     <span className="text-sm text-gray-600">{(contact._count as any)?.messages ?? 0}</span>
                   </td>
                   <td className="px-5 py-3.5">
-                    <span className="text-sm text-gray-500">
+                    <span className="text-sm text-gray-500" suppressHydrationWarning>
                       {contact.lastMessageAt
                         ? format(new Date(contact.lastMessageAt), 'dd MMM yyyy')
                         : '—'}

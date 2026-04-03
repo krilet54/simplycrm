@@ -1,7 +1,8 @@
 // src/components/kanban/KanbanClient.tsx
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import type { KanbanStageType, ContactType } from '@/types';
@@ -41,11 +42,17 @@ function calculatePipelineStats(stages: StageWithContacts[]) {
 }
 
 export default function KanbanClient({ stages: initialStages }: Props) {
+  const router = useRouter();
   const [stages, setStages] = useState<StageWithContacts[]>(initialStages);
   const [dragging, setDragging] = useState<{ contactId: string; fromStageId: string } | null>(null);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
   const [showAddStage, setShowAddStage] = useState(false);
   const [newStageName, setNewStageName] = useState('');
+
+  // Sync state when initialStages prop changes (e.g., after navigation)
+  useEffect(() => {
+    setStages(initialStages);
+  }, [initialStages]);
 
   function onDragStart(contactId: string, fromStageId: string) {
     setDragging({ contactId, fromStageId });
@@ -100,10 +107,30 @@ export default function KanbanClient({ stages: initialStages }: Props) {
       });
       if (!res.ok) throw new Error();
       toast.success('Contact moved');
+      // Refresh server data to ensure cache is updated
+      router.refresh();
     } catch {
       toast.error('Failed to move contact');
-      // Revert - reload page
-      window.location.reload();
+      // Revert optimistic update
+      setStages((prev) => {
+        let movedContact: ContactType | undefined;
+        const updated = prev.map((stage) => {
+          if (stage.id === toStageId) {
+            movedContact = stage.contacts.find((c) => c.id === contactId);
+            return { ...stage, contacts: stage.contacts.filter((c) => c.id !== contactId) };
+          }
+          return stage;
+        });
+        return updated.map((stage) => {
+          if (stage.id === fromStageId && movedContact) {
+            return {
+              ...stage,
+              contacts: [{ ...movedContact, kanbanStageId: fromStageId }, ...stage.contacts],
+            };
+          }
+          return stage;
+        });
+      });
     }
   }
 
@@ -156,7 +183,7 @@ export default function KanbanClient({ stages: initialStages }: Props) {
         <div className="px-6 py-3 bg-white border-b border-gray-100 flex items-center justify-start gap-8">
           <div>
             <div className="text-xs text-gray-500 font-medium">Total in pipeline</div>
-            <div className="text-lg font-bold text-gray-900">₦{pipelineTotal.toLocaleString()}</div>
+            <div className="text-lg font-bold text-gray-900" suppressHydrationWarning>₦{pipelineTotal.toLocaleString('en-US')}</div>
           </div>
           <div className="w-px h-6 bg-gray-200" />
           <div>
@@ -166,7 +193,7 @@ export default function KanbanClient({ stages: initialStages }: Props) {
           <div className="w-px h-6 bg-gray-200" />
           <div>
             <div className="text-xs text-gray-500 font-medium">Avg deal</div>
-            <div className="text-lg font-bold text-gray-900">₦{avgDeal.toLocaleString()}</div>
+            <div className="text-lg font-bold text-gray-900" suppressHydrationWarning>₦{avgDeal.toLocaleString('en-US')}</div>
           </div>
         </div>
       )}
@@ -211,8 +238,8 @@ export default function KanbanClient({ stages: initialStages }: Props) {
                   </span>
                 </div>
                 {calculateStageTotal(stage.contacts) > 0 && (
-                  <div className="text-xs text-gray-500 pl-0">
-                    ₦{calculateStageTotal(stage.contacts).toLocaleString()} in pipeline
+                  <div className="text-xs text-gray-500 pl-0" suppressHydrationWarning>
+                    ₦{calculateStageTotal(stage.contacts).toLocaleString('en-US')} in pipeline
                   </div>
                 )}
               </div>
@@ -234,8 +261,8 @@ export default function KanbanClient({ stages: initialStages }: Props) {
                   >
                     {/* Estimated value badge - top right */}
                     {contact.estimatedValue && (
-                      <div className="absolute -top-1 -right-1 bg-emerald-100 text-emerald-700 text-xs font-bold px-2 py-0.5 rounded-full shadow-sm">
-                        ₦{contact.estimatedValue.toLocaleString()}
+                      <div className="absolute -top-1 -right-1 bg-emerald-100 text-emerald-700 text-xs font-bold px-2 py-0.5 rounded-full shadow-sm" suppressHydrationWarning>
+                        ₦{contact.estimatedValue.toLocaleString('en-US')}
                       </div>
                     )}
 
@@ -283,7 +310,7 @@ export default function KanbanClient({ stages: initialStages }: Props) {
                     )}
 
                     <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-gray-50">
-                      <span className="text-[11px] text-gray-400">
+                      <span className="text-[11px] text-gray-400" suppressHydrationWarning>
                         {contact.lastMessageAt
                           ? format(new Date(contact.lastMessageAt), 'dd MMM')
                           : 'No messages'}

@@ -1,10 +1,12 @@
 // src/components/shared/Sidebar.tsx
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { getSupabaseBrowserClient } from '@/lib/supabase-browser';
 import toast from 'react-hot-toast';
+import QuickAddContactModal from './QuickAddContactModal';
 
 interface SidebarProps {
   user: {
@@ -18,7 +20,9 @@ interface SidebarProps {
     id: string;
     businessName: string;
     plan: string;
+    kanbanStages?: Array<{ id: string; name: string; position: number }>;
   };
+  tags?: Array<{ id: string; name: string; color: string }>;
 }
 
 const navItems = [
@@ -69,6 +73,15 @@ const navItems = [
     ),
   },
   {
+    href: '/dashboard/kanban?view=tasks',
+    label: 'Tasks',
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+      </svg>
+    ),
+  },
+  {
     href: '/dashboard/settings',
     label: 'Settings',
     icon: (
@@ -86,9 +99,11 @@ const planColors: Record<string, string> = {
   PRO:     '#6366f1',
 };
 
-export default function Sidebar({ user, workspace }: SidebarProps) {
+export default function Sidebar({ user, workspace, tags = [] }: SidebarProps) {
+  const [showAddContact, setShowAddContact] = useState(false);
   const pathname = usePathname();
   const router   = useRouter();
+  const searchParams = useSearchParams();
   const supabase = getSupabaseBrowserClient();
 
   async function handleSignOut() {
@@ -142,7 +157,18 @@ export default function Sidebar({ user, workspace }: SidebarProps) {
       {/* Nav */}
       <nav className="flex-1 space-y-1">
         {navItems.map(({ href, label, icon }) => {
-          const active = pathname.startsWith(href);
+          // Handle Tasks link with query param
+          const isTasksLink = href === '/dashboard/kanban?view=tasks';
+          const isKanbanWithTasks = pathname === '/dashboard/kanban' && searchParams.get('view') === 'tasks';
+          
+          // Exact match for /dashboard (Home), special handling for tasks, prefix match for others
+          const active = href === '/dashboard'
+            ? pathname === '/dashboard'
+            : isTasksLink
+            ? isKanbanWithTasks
+            : href === '/dashboard/kanban'
+            ? pathname === '/dashboard/kanban' && !searchParams.get('view')
+            : pathname.startsWith(href);
           return (
             <Link
               key={href}
@@ -156,8 +182,24 @@ export default function Sidebar({ user, workspace }: SidebarProps) {
         })}
       </nav>
 
+      {/* Quick Add Contact Button */}
+      <div className="px-3 mb-2">
+        <button
+          onClick={() => setShowAddContact(true)}
+          className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg bg-forest-600 hover:bg-forest-500 text-white text-sm font-medium transition-colors"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+            <circle cx="8.5" cy="7" r="4"/>
+            <line x1="20" y1="8" x2="20" y2="14"/>
+            <line x1="23" y1="11" x2="17" y2="11"/>
+          </svg>
+          <span>Add Contact</span>
+        </button>
+      </div>
+
       {/* User section */}
-      <div className="mt-auto pt-4 border-t border-white/10">
+      <div className="pt-4 border-t border-white/10">
         <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg">
           <div className="w-8 h-8 rounded-full bg-forest-600 flex items-center justify-center text-white text-xs font-bold shrink-0">
             {initials}
@@ -179,6 +221,19 @@ export default function Sidebar({ user, workspace }: SidebarProps) {
           </button>
         </div>
       </div>
+
+      {/* Quick Add Contact Modal */}
+      {showAddContact && (
+        <QuickAddContactModal
+          kanbanStages={workspace.kanbanStages || []}
+          tags={tags}
+          onClose={() => setShowAddContact(false)}
+          onSuccess={() => {
+            setShowAddContact(false);
+            router.refresh();
+          }}
+        />
+      )}
     </aside>
   );
 }

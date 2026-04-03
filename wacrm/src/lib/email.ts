@@ -6,10 +6,20 @@ let resend: any = null;
 
 function getResend() {
   if (!resend) {
+    if (!process.env.RESEND_API_KEY) {
+      throw new Error('RESEND_API_KEY is not configured');
+    }
     const { Resend } = require('resend');
     resend = new Resend(process.env.RESEND_API_KEY);
   }
   return resend;
+}
+
+interface Attachment {
+  name: string;
+  type: string;
+  size: number;
+  base64: string;
 }
 
 export interface SendEmailParams {
@@ -20,6 +30,7 @@ export interface SendEmailParams {
   subject: string;
   body: string;
   actorId?: string;
+  attachments?: Attachment[];
 }
 
 /**
@@ -33,6 +44,7 @@ export async function sendEmail({
   subject,
   body,
   actorId,
+  attachments,
 }: SendEmailParams) {
   try {
     // Create email record first
@@ -48,13 +60,22 @@ export async function sendEmail({
       },
     });
 
+    // Prepare attachments for Resend
+    const resendAttachments = attachments?.map((att) => ({
+      filename: att.name,
+      content: att.base64,
+    }));
+
     // Send via Resend
+    // Use verified sender email or Resend's test email for development
+    const senderEmail = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
     const resendClient = getResend();
     const result = await resendClient.emails.send({
-      from,
+      from: senderEmail,
       to,
       subject,
       html: formatEmailBody(body),
+      attachments: resendAttachments,
     });
 
     if (result.error) {
@@ -63,7 +84,7 @@ export async function sendEmail({
         where: { id: email.id },
         data: { status: 'FAILED' },
       });
-      throw result.error;
+      throw new Error(result.error.message || 'Email send failed');
     }
 
     // Update email status to SENT
@@ -80,7 +101,7 @@ export async function sendEmail({
       activityType: 'EMAIL_SENT',
       actorId: actorId || '',
       title: `Email sent: "${subject}"`,
-      description: `To: ${to}`,
+      description: `To: ${to}${attachments?.length ? ` (${attachments.length} attachment${attachments.length > 1 ? 's' : ''})` : ''}`,
       metadata: { emailId: email.id, subject },
     });
 

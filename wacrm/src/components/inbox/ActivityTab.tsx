@@ -70,7 +70,7 @@ export default function ActivityTab({ contactId }: ActivityTabProps) {
                     {activity.actor && (
                       <span className="text-xs text-gray-400">{activity.actor.name}</span>
                     )}
-                    <span className="text-xs text-gray-300">
+                    <span className="text-xs text-gray-300" suppressHydrationWarning>
                       {format(new Date(activity.timestamp), 'dd MMM, HH:mm')}
                     </span>
                   </div>

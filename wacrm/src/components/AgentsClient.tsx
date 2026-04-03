@@ -149,7 +149,7 @@ export default function AgentsClient({ agents: init, currentUser, plan, agentLim
                       >
                         {agent.role}
                       </span>
-                      <span className="text-[11px] text-gray-400">
+                      <span className="text-[11px] text-gray-400" suppressHydrationWarning>
                         Joined {format(new Date(agent.createdAt), 'MMM yyyy')}
                       </span>
                     </div>

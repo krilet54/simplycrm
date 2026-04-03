@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import toast from 'react-hot-toast';
-import { X } from 'lucide-react';
+import { X, Paperclip, FileText, Image, Trash2 } from 'lucide-react';
 
 interface EmailModalProps {
   contactId: string;
@@ -10,6 +10,15 @@ interface EmailModalProps {
   contactName: string;
   onClose: () => void;
   onEmailSent: () => void;
+  initialSubject?: string;
+  initialBody?: string;
+}
+
+interface Attachment {
+  name: string;
+  type: string;
+  size: number;
+  base64: string;
 }
 
 export default function EmailModal({
@@ -18,11 +27,15 @@ export default function EmailModal({
   contactName,
   onClose,
   onEmailSent,
+  initialSubject = '',
+  initialBody = '',
 }: EmailModalProps) {
-  const [subject, setSubject] = useState('');
-  const [body, setBody] = useState('');
+  const [subject, setSubject] = useState(initialSubject);
+  const [body, setBody] = useState(initialBody);
   const [sendNow, setSendNow] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!contactEmail) {
     return (
@@ -39,6 +52,52 @@ export default function EmailModal({
         </div>
       </div>
     );
+  }
+
+  async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
+    if (!files) return;
+
+    const maxSize = 10 * 1024 * 1024; // 10MB limit
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'application/pdf', 'text/plain', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+
+    for (const file of Array.from(files)) {
+      if (file.size > maxSize) {
+        toast.error(`${file.name} is too large (max 10MB)`);
+        continue;
+      }
+
+      if (!allowedTypes.includes(file.type)) {
+        toast.error(`${file.name} has unsupported format`);
+        continue;
+      }
+
+      // Convert to base64
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64 = (reader.result as string).split(',')[1];
+        setAttachments((prev) => [
+          ...prev,
+          { name: file.name, type: file.type, size: file.size, base64 },
+        ]);
+      };
+      reader.readAsDataURL(file);
+    }
+
+    // Reset input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  }
+
+  function removeAttachment(index: number) {
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function formatFileSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   }
 
   async function handleSend() {
@@ -58,6 +117,7 @@ export default function EmailModal({
           subject,
           body,
           sendNow,
+          attachments: attachments.length > 0 ? attachments : undefined,
         }),
       });
 
@@ -118,6 +178,55 @@ export default function EmailModal({
               rows={6}
               className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-forest-400 focus:border-transparent resize-none"
             />
+          </div>
+
+          {/* Attachments */}
+          <div>
+            <label className="text-sm font-medium text-gray-700 mb-2 block">Attachments</label>
+            
+            {/* File list */}
+            {attachments.length > 0 && (
+              <div className="mb-3 space-y-2">
+                {attachments.map((file, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded border border-gray-200"
+                  >
+                    {file.type.startsWith('image/') ? (
+                      <Image size={16} className="text-blue-500" />
+                    ) : (
+                      <FileText size={16} className="text-gray-500" />
+                    )}
+                    <span className="text-sm text-gray-700 flex-1 truncate">{file.name}</span>
+                    <span className="text-xs text-gray-400">{formatFileSize(file.size)}</span>
+                    <button
+                      onClick={() => removeAttachment(index)}
+                      className="text-gray-400 hover:text-red-500 transition"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Add attachment button */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept=".pdf,.jpg,.jpeg,.png,.gif,.doc,.docx,.txt"
+              onChange={handleFileSelect}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 border border-dashed border-gray-300 rounded-lg hover:border-forest-400 hover:text-forest-600 transition w-full justify-center"
+            >
+              <Paperclip size={16} />
+              Add attachment (PDF, images, documents)
+            </button>
           </div>
 
           <div className="flex items-center gap-2">

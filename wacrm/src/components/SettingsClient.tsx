@@ -14,6 +14,32 @@ interface Workspace {
   whatsappAccessToken?: string | null;
   metaOAuthToken?: MetaOAuthTokenType | null;
   plan: string;
+  // Invoice branding
+  invoiceLogo?: string | null;
+  invoicePrimaryColor?: string | null;
+  invoiceFooterText?: string | null;
+  invoiceBusinessAddress?: string | null;
+  invoiceBusinessPhone?: string | null;
+  invoiceBusinessEmail?: string | null;
+}
+
+interface RecurringInvoiceItem {
+  id: string;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+}
+
+interface RecurringInvoice {
+  id: string;
+  contactId: string;
+  title: string;
+  frequency: 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'YEARLY';
+  amount: number;
+  isActive: boolean;
+  nextInvoiceDate: string;
+  contact: { id: string; name: string | null; phoneNumber: string; email: string | null };
+  items: RecurringInvoiceItem[];
 }
 
 interface Props {
@@ -21,11 +47,13 @@ interface Props {
   currentUser:  { id: string; role: string; name: string; email: string };
   quickReplies: QuickReplyType[];
   tags:         TagType[];
+  contacts?:    Array<{ id: string; name: string | null; phoneNumber: string }>;
+  recurringInvoices?: RecurringInvoice[];
 }
 
 const TAG_COLORS = ['#ef4444','#f97316','#f59e0b','#22c55e','#14b8a6','#6366f1','#8b5cf6','#ec4899'];
 
-type Tab = 'workspace' | 'whatsapp' | 'qr-code' | 'quick-replies' | 'tags' | 'billing';
+type Tab = 'workspace' | 'invoice-branding' | 'whatsapp' | 'qr-code' | 'quick-replies' | 'tags' | 'billing';
 
 export default function SettingsClient({ workspace: initWs, currentUser, quickReplies: initQR, tags: initTags }: Props) {
   const [tab, setTab] = useState<Tab>('workspace');
@@ -53,6 +81,15 @@ export default function SettingsClient({ workspace: initWs, currentUser, quickRe
   const [tName,   setTName]   = useState('');
   const [tColor,  setTColor]  = useState(TAG_COLORS[0]);
   const [tLoading,setTLoading] = useState(false);
+
+  // Invoice Branding
+  const [invoiceLogo, setInvoiceLogo] = useState(initWs.invoiceLogo ?? '');
+  const [invoicePrimaryColor, setInvoicePrimaryColor] = useState(initWs.invoicePrimaryColor ?? '#22c55e');
+  const [invoiceFooterText, setInvoiceFooterText] = useState(initWs.invoiceFooterText ?? 'Thank you for your business!');
+  const [invoiceBusinessAddress, setInvoiceBusinessAddress] = useState(initWs.invoiceBusinessAddress ?? '');
+  const [invoiceBusinessPhone, setInvoiceBusinessPhone] = useState(initWs.invoiceBusinessPhone ?? '');
+  const [invoiceBusinessEmail, setInvoiceBusinessEmail] = useState(initWs.invoiceBusinessEmail ?? '');
+  const [invoiceSaving, setInvoiceSaving] = useState(false);
 
   const isOwnerOrAdmin = ['OWNER', 'ADMIN'].includes(currentUser.role);
   const webhookUrl = typeof window !== 'undefined'
@@ -176,8 +213,42 @@ export default function SettingsClient({ workspace: initWs, currentUser, quickRe
     toast.success('Tag deleted');
   }
 
+  async function saveInvoiceBranding() {
+    setInvoiceSaving(true);
+    try {
+      const res = await fetch('/api/workspace', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          invoiceLogo: invoiceLogo.trim() || null,
+          invoicePrimaryColor,
+          invoiceFooterText: invoiceFooterText.trim() || null,
+          invoiceBusinessAddress: invoiceBusinessAddress.trim() || null,
+          invoiceBusinessPhone: invoiceBusinessPhone.trim() || null,
+          invoiceBusinessEmail: invoiceBusinessEmail.trim() || null,
+        }),
+      });
+      if (!res.ok) throw new Error();
+      setWorkspace(prev => ({
+        ...prev,
+        invoiceLogo: invoiceLogo.trim() || null,
+        invoicePrimaryColor,
+        invoiceFooterText: invoiceFooterText.trim() || null,
+        invoiceBusinessAddress: invoiceBusinessAddress.trim() || null,
+        invoiceBusinessPhone: invoiceBusinessPhone.trim() || null,
+        invoiceBusinessEmail: invoiceBusinessEmail.trim() || null,
+      }));
+      toast.success('Invoice branding updated');
+    } catch {
+      toast.error('Failed to save branding');
+    } finally {
+      setInvoiceSaving(false);
+    }
+  }
+
   const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'workspace', label: 'Workspace', icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 3H8a2 2 0 0 0-2 2v2h12V5a2 2 0 0 0-2-2z"/></svg> },
+    { id: 'invoice-branding', label: 'Invoice Branding', icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg> },
     { id: 'whatsapp',  label: 'WhatsApp',  icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg> },
     { id: 'qr-code',   label: 'QR Code',   icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="4" height="4"/></svg> },
     { id: 'quick-replies', label: 'Quick Replies', icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> },
@@ -242,6 +313,151 @@ export default function SettingsClient({ workspace: initWs, currentUser, quickRe
               </section>
             )}
 
+            {/* ── Invoice Branding ────────────────────────────────────── */}
+            {tab === 'invoice-branding' && (
+              <section>
+                <h2 className="text-lg font-bold text-gray-900 mb-1" style={{ fontFamily: 'var(--font-display)' }}>Invoice Branding</h2>
+                <p className="text-sm text-gray-500 mb-6">Customize how your invoices look and feel.</p>
+
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  {/* Form Section */}
+                  <div className="lg:col-span-2 space-y-4">
+                    <div className="card p-5 space-y-4">
+                      {/* Logo */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Logo URL</label>
+                        <input
+                          className="input text-sm"
+                          placeholder="https://example.com/logo.png"
+                          value={invoiceLogo}
+                          onChange={(e) => setInvoiceLogo(e.target.value)}
+                          disabled={!isOwnerOrAdmin}
+                        />
+                        <p className="text-xs text-gray-500 mt-1">Max width: 120px, max height: 60px</p>
+                        {invoiceLogo && (
+                          <div className="mt-2 p-2 bg-gray-50 rounded border border-gray-200">
+                            <img src={invoiceLogo} alt="Logo preview" className="max-w-full h-auto max-h-16" />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Primary Color */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Primary Brand Color</label>
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="color"
+                            value={invoicePrimaryColor}
+                            onChange={(e) => setInvoicePrimaryColor(e.target.value)}
+                            disabled={!isOwnerOrAdmin}
+                            className="w-12 h-10 rounded border border-gray-300 cursor-pointer"
+                          />
+                          <input
+                            type="text"
+                            value={invoicePrimaryColor}
+                            onChange={(e) => setInvoicePrimaryColor(e.target.value)}
+                            disabled={!isOwnerOrAdmin}
+                            className="input flex-1 font-mono text-sm"
+                            placeholder="#22c55e"
+                          />
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">Used for headers and accents on invoices</p>
+                      </div>
+
+                      {/* Business Details */}
+                      <div className="border-t pt-4">
+                        <h3 className="text-sm font-semibold text-gray-800 mb-3">Business Details (shown on invoices)</h3>
+                        <div className="space-y-3">
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">Address</label>
+                            <input
+                              className="input text-sm"
+                              placeholder="123 Business Street, City, Country"
+                              value={invoiceBusinessAddress}
+                              onChange={(e) => setInvoiceBusinessAddress(e.target.value)}
+                              disabled={!isOwnerOrAdmin}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">Phone</label>
+                            <input
+                              className="input text-sm"
+                              placeholder="+1 (555) 123-4567"
+                              value={invoiceBusinessPhone}
+                              onChange={(e) => setInvoiceBusinessPhone(e.target.value)}
+                              disabled={!isOwnerOrAdmin}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">Email</label>
+                            <input
+                              className="input text-sm"
+                              placeholder="support@business.com"
+                              value={invoiceBusinessEmail}
+                              onChange={(e) => setInvoiceBusinessEmail(e.target.value)}
+                              disabled={!isOwnerOrAdmin}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Footer Text */}
+                      <div className="border-t pt-4">
+                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Footer Message</label>
+                        <textarea
+                          rows={3}
+                          className="input text-sm resize-none"
+                          placeholder="Thank you for your business!"
+                          value={invoiceFooterText}
+                          onChange={(e) => setInvoiceFooterText(e.target.value)}
+                          disabled={!isOwnerOrAdmin}
+                        />
+                        <p className="text-xs text-gray-500 mt-1">Message displayed at the bottom of your invoices</p>
+                      </div>
+
+                      {isOwnerOrAdmin && (
+                        <button onClick={saveInvoiceBranding} disabled={invoiceSaving} className="btn-primary">
+                          {invoiceSaving ? 'Saving...' : 'Save Branding'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Preview Section */}
+                  <div className="lg:col-span-1">
+                    <div className="card p-4 bg-gray-50 sticky top-8">
+                      <h3 className="text-sm font-semibold text-gray-800 mb-3">Preview</h3>
+                      <div className="bg-white rounded border border-gray-200 p-4 text-xs space-y-2">
+                        {/* Mini Invoice Preview */}
+                        <div className="border-b pb-2">
+                          {invoiceLogo && (
+                            <img src={invoiceLogo} alt="Logo" className="max-w-full h-auto max-h-12 mb-2" />
+                          )}
+                          <div style={{ color: invoicePrimaryColor }} className="font-bold text-sm">
+                            {workspace.businessName}
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          {invoiceBusinessAddress && <div className="text-gray-600 text-xs">{invoiceBusinessAddress}</div>}
+                          {invoiceBusinessPhone && <div className="text-gray-600 text-xs">{invoiceBusinessPhone}</div>}
+                          {invoiceBusinessEmail && <div className="text-gray-600 text-xs">{invoiceBusinessEmail}</div>}
+                        </div>
+                        <div className="pt-2 border-t text-center text-gray-500 italic text-xs">
+                          {invoiceFooterText}
+                        </div>
+                        <div className="pt-2" style={{ borderTopColor: invoicePrimaryColor + '20' }} className="border-t">
+                          <div style={{ color: invoicePrimaryColor }} className="font-bold text-sm text-center">
+                            ₦25,000
+                          </div>
+                          <div className="text-gray-500 text-xs text-center">Amount Due</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            )}
+
             {/* ── WhatsApp ───────────────────────────────────────────── */}
             {tab === 'whatsapp' && (
               <section>
@@ -260,7 +476,7 @@ export default function SettingsClient({ workspace: initWs, currentUser, quickRe
                         </h3>
                         <div className="space-y-2 text-sm text-emerald-800">
                           <p>Phone Number ID: <code className="font-mono text-xs bg-white px-2 py-1 rounded">{workspace.metaOAuthToken.phoneNumberId}</code></p>
-                          <p>Connected since: {format(new Date(workspace.metaOAuthToken.connectedAt), 'dd MMM yyyy, HH:mm')}</p>
+                          <p suppressHydrationWarning>Connected since: {format(new Date(workspace.metaOAuthToken.connectedAt), 'dd MMM yyyy, HH:mm')}</p>
                         </div>
                       </div>
                       <button

@@ -49,13 +49,13 @@ export async function GET(req: NextRequest) {
 const createSchema = z.object({
   phoneNumber: z.string().min(6).max(20),
   name: z.string().optional(),
-  email: z.string().email().optional(),
-  kanbanStageId: z.string().uuid().optional(),
+  email: z.string().email().nullable().optional(),
+  kanbanStageId: z.string().uuid().nullable().optional(),
   tagIds: z.array(z.string().uuid()).optional(),
   source: z.enum(['WHATSAPP', 'WALK_IN', 'PHONE_CALL', 'REFERRAL', 'SOCIAL_MEDIA', 'EVENT', 'OTHER']).optional(),
-  sourceNote: z.string().max(200).optional(),
-  interest: z.string().max(500).optional(),
-  estimatedValue: z.number().positive().optional(),
+  sourceNote: z.string().max(200).nullable().optional(),
+  interest: z.string().max(500).nullable().optional(),
+  estimatedValue: z.number().positive().nullable().optional(),
 });
 
 export async function POST(req: NextRequest) {
