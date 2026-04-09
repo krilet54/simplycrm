@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServerClient } from './supabase-server';
 import { db } from './db';
 import { unauthorizedResponse, forbiddenResponse } from './security';
+import crypto from 'crypto';
 
 export interface AuthContext {
   userId: string;
@@ -100,13 +101,14 @@ export function verifyCronSecret(req: NextRequest): boolean {
 
   try {
     // Use timing-safe comparison to prevent timing attacks
-    return crypto.subtle
-      .timingSafeEqual(
-        new TextEncoder().encode(secret),
-        new TextEncoder().encode(expectedSecret)
-      )
-      .then(() => true)
-      .catch(() => false);
+    const secretBuffer = Buffer.from(secret);
+    const expectedSecretBuffer = Buffer.from(expectedSecret);
+
+    if (secretBuffer.length !== expectedSecretBuffer.length) {
+      return false;
+    }
+
+    return crypto.timingSafeEqual(secretBuffer, expectedSecretBuffer);
   } catch {
     return false;
   }

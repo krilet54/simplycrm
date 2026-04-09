@@ -9,12 +9,26 @@
  * usePresence hook - DISABLED
  * Returns empty/default values without making any API calls
  */
-export function usePresence() {
+export interface PresenceUser {
+  name: string;
+  avatarUrl?: string | null;
+  currentPage?: string | null;
+}
+
+interface UsePresenceResult {
+  onlineUsers: Record<string, PresenceUser>;
+  isConnected: boolean;
+  onlineCount: number;
+  isUserOnline: (userId: string) => boolean;
+  refreshPresence: () => void;
+}
+
+export function usePresence(): UsePresenceResult {
   return {
     onlineUsers: {},
     isConnected: false,
     onlineCount: 0,
-    isUserOnline: () => false,
+    isUserOnline: (_userId: string) => false,
     refreshPresence: () => {},
   };
 }

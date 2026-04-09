@@ -4,6 +4,8 @@ import { db } from '@/lib/db';
 import { cookies } from 'next/headers';
 import crypto from 'crypto';
 
+export const dynamic = 'force-dynamic';
+
 // Initiate OAuth flow - Generate state token and redirect to Meta's authorization endpoint
 export async function GET(request: NextRequest) {
   try {

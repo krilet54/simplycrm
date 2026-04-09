@@ -285,7 +285,7 @@ function arrayToCSV(data: any[], columns: { key: string; header: string }[]): st
 }
 
 // Simple ZIP file creator
-function createZipFile(files: { name: string; content: string }[]): Buffer {
+function createZipFile(files: { name: string; content: string }[]): ArrayBuffer {
   const entries: Buffer[] = [];
   const centralDirectory: Buffer[] = [];
   let offset = 0;
@@ -348,7 +348,10 @@ function createZipFile(files: { name: string; content: string }[]): Buffer {
   endRecord.writeUInt32LE(centralDirOffset, 16);
   endRecord.writeUInt16LE(0, 20);
 
-  return Buffer.concat([...entries, ...centralDirectory, endRecord]);
+  const zipBytes = Buffer.concat([...entries, ...centralDirectory, endRecord]);
+  const zipArrayBuffer = new ArrayBuffer(zipBytes.byteLength);
+  new Uint8Array(zipArrayBuffer).set(zipBytes);
+  return zipArrayBuffer;
 }
 
 export async function POST(req: NextRequest) {
@@ -452,7 +455,7 @@ export async function POST(req: NextRequest) {
         headers: {
           'Content-Type': 'application/zip',
           'Content-Disposition': `attachment; filename="${fileName}"`,
-          'Content-Length': zipBuffer.length.toString(),
+          'Content-Length': zipBuffer.byteLength.toString(),
         },
       });
       } catch (exportError) {

@@ -2,6 +2,7 @@
 import { createSupabaseServerClient } from './supabase-server';
 import { db } from './db';
 import { redirect } from 'next/navigation';
+import type { AgentRole } from '@/types';
 
 export async function getAuthenticatedUser() {
   const supabase = createSupabaseServerClient();
@@ -40,6 +41,20 @@ export async function getAuthenticatedUser() {
     redirect('/onboarding');
   }
 
+  const metadataName =
+    typeof user.user_metadata?.name === 'string'
+      ? user.user_metadata.name.trim()
+      : '';
+  const displayName =
+    dbUserRow.name?.trim() ||
+    metadataName ||
+    user.email?.split('@')[0] ||
+    'User';
+  const normalizedRole: AgentRole =
+    dbUserRow.role === 'OWNER' || dbUserRow.role === 'ADMIN' || dbUserRow.role === 'AGENT'
+      ? dbUserRow.role
+      : 'AGENT';
+
   // Fetch workspace separately (simpler, avoids complex JOIN)
   const workspace = await db.workspace.findUnique({
     where: { id: dbUserRow.workspaceId },
@@ -52,6 +67,8 @@ export async function getAuthenticatedUser() {
   // Merge into expected structure
   const dbUser = {
     ...dbUserRow,
+    name: displayName,
+    role: normalizedRole,
     workspace,
   };
 

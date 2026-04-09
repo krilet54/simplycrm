@@ -22,6 +22,13 @@ interface Attachment {
   base64: string;
 }
 
+interface SendSystemEmailParams {
+  from?: string;
+  to: string;
+  subject: string;
+  html: string;
+}
+
 export interface SendEmailParams {
   workspaceId: string;
   contactId: string;
@@ -112,6 +119,38 @@ export async function sendEmail({
     return sentEmail;
   } catch (error) {
     console.error('Email send failed:', error);
+    throw error;
+  }
+}
+
+/**
+ * Send a system email without creating a contact-linked email record.
+ */
+export async function sendSystemEmail({
+  from,
+  to,
+  subject,
+  html,
+}: SendSystemEmailParams) {
+  try {
+    const senderEmail = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
+    const resendClient = getResend();
+    const formattedFrom = from ? `${from} <${senderEmail}>` : senderEmail;
+
+    const result = await resendClient.emails.send({
+      from: formattedFrom,
+      to,
+      subject,
+      html,
+    });
+
+    if (result.error) {
+      throw new Error(result.error.message || 'Email send failed');
+    }
+
+    return result;
+  } catch (error) {
+    console.error('System email send failed:', error);
     throw error;
   }
 }

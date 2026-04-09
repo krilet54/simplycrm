@@ -4,7 +4,7 @@ import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { markNotificationAsRead, markAllNotificationsAsRead, getUnreadNotificationCount, setBroadcastFunction } from "@/lib/notifications";
 
 // Store active SSE clients by userId
-const sseClients = new Map<string, Set<ReadableStreamDefaultController>>();
+const sseClients = new Map<string, Set<ReadableStreamDefaultController<Uint8Array>>>();
 
 // Broadcast helper used by this route and injected into notifications library
 function broadcastToUser(userId: string, notification: any) {
@@ -20,14 +20,14 @@ function broadcastToUser(userId: string, notification: any) {
     })}\n\n`
   );
 
-  for (const controller of clients) {
+  clients.forEach((controller) => {
     try {
       controller.enqueue(data);
     } catch (e) {
       console.error('Error sending to SSE client:', e);
       clients.delete(controller);
     }
-  }
+  });
 }
 
 function broadcastToUsers(userIds: string[], notification: any) {

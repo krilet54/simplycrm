@@ -1,5 +1,5 @@
 import { db } from '@/lib/db';
-import { sendEmail } from '@/lib/email';
+import { sendSystemEmail } from '@/lib/email';
 import { queueNotification } from '@/lib/redis';
 import type { NotificationType } from '@prisma/client';
 
@@ -84,12 +84,11 @@ export async function createNotification(params: CreateNotificationParams) {
           </p>
         `;
 
-        await sendEmail({
-          workspaceId,
+        await sendSystemEmail({
           from: workspace?.businessName || 'Crebo',
           to: recipientEmail,
           subject: emailSubject,
-          body: emailBody,
+          html: emailBody,
         });
       } catch (emailError) {
         console.error('Failed to send notification email:', emailError);

@@ -20,8 +20,8 @@ export const useContactPanel = create<SelectedContact & {
   setNotes: (notes: any[]) => void;
   setInvoices: (invoices: any[]) => void;
   setEmails: (emails: any[]) => void;
-  setRefreshCallback?: (callback: () => void) => void;
-  triggerRefresh?: () => void;
+  setRefreshCallback: (callback: () => void) => void;
+  triggerRefresh: () => void;
 }>((set, get) => ({
   contactId: null,
   isOpen: false,
@@ -64,7 +64,15 @@ export const useContactPanel = create<SelectedContact & {
   setNotes: (notes: any[]) => set({ notes }),
   setInvoices: (invoices: any[]) => set({ invoices }),
   setEmails: (emails: any[]) => set({ emails }),
+  setRefreshCallback: (callback: () => void) => {
+    refreshCallbackGlobal = callback;
+  },
+  triggerRefresh: () => {
+    refreshCallbackGlobal?.();
+  },
 }));
+
+let refreshCallbackGlobal: (() => void) | null = null;
 
 interface QuickAddModal {
   isOpen: boolean;

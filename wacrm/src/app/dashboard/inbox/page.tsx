@@ -35,6 +35,10 @@ export default async function InboxPage() {
     where: { workspaceId: workspace.id },
     select: { id: true, name: true, avatarUrl: true },
   });
+  const normalizedAgents = agents.map((agent) => ({
+    ...agent,
+    name: agent.name?.trim() || 'Unnamed agent',
+  }));
 
   const tags = await db.tag.findMany({
     where: { workspaceId: workspace.id },
@@ -48,7 +52,7 @@ export default async function InboxPage() {
   return (
     <InboxClient
       initialContacts={contacts as any}
-      agents={agents}
+      agents={normalizedAgents}
       currentUser={dbUser}
       workspace={wsData || { id: workspace.id, kanbanStages: [] }}
       tags={tags}

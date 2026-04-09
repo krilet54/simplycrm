@@ -4,6 +4,8 @@ import { createSupabaseServerClient } from '@/lib/supabase-server';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { z } from 'zod';
 
+export const dynamic = 'force-dynamic';
+
 const inviteSchema = z.object({
   email: z.string().email(),
   role: z.enum(['AGENT', 'ADMIN']).default('AGENT'),
