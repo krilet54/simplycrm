@@ -27,7 +27,7 @@ export const metadata: Metadata = {
     siteName: 'Crebo',
     images: [
       {
-        url: '/og-image.png',
+        url: '/crebo logo 2.png',
         width: 1200,
         height: 630,
         alt: 'Crebo — Your business, credibly run',
@@ -40,7 +40,7 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     title: 'Crebo — Your business, credibly run',
     description: 'Stop losing customers to disorganisation. Organise contacts, track pipeline, get paid faster.',
-    images: ['/og-image.png'],
+    images: ['/crebo logo 2.png'],
   },
 
   // App meta
