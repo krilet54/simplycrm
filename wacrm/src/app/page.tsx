@@ -3,6 +3,9 @@
 
 import Link from 'next/link';
 import { Check, Users, Receipt, Briefcase, UserPlus, TrendingUp, ChevronDown } from 'lucide-react';
+import { redirect } from 'next/navigation';
+import { createSupabaseServerClient } from '@/lib/supabase-server';
+import { db } from '@/lib/db';
 
 // Force dynamic to ensure Vercel serves this on-request
 export const dynamic = 'force-dynamic';
@@ -396,6 +399,30 @@ function LandingPage() {
   );
 }
 
-export default function HomePage() {
+export default async function HomePage() {
+  try {
+    const supabase = createSupabaseServerClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (user) {
+      const dbUser = await db.user
+        .findUnique({
+          where: { supabaseId: user.id },
+          select: { id: true },
+        })
+        .catch(() => null);
+
+      if (dbUser) {
+        redirect('/dashboard');
+      }
+
+      redirect('/onboarding');
+    }
+  } catch (error) {
+    console.error('Home page auth check failed:', error);
+  }
+
   return <LandingPage />;
 }

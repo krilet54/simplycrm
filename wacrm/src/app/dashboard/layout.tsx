@@ -1,44 +1,52 @@
 // src/app/dashboard/layout.tsx
-import { redirect } from 'next/navigation';
-import { createSupabaseServerClient } from '@/lib/supabase-server';
 import { db } from '@/lib/db';
+import { getAuthenticatedUser } from '@/lib/auth';
 import DashboardLayoutClient from './DashboardLayoutClient';
 import { getTrialStatus } from '@/lib/trial';
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const supabase = createSupabaseServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { dbUser, workspace } = await getAuthenticatedUser();
 
-  if (!user) redirect('/login');
-
-  const dbUser = await db.user.findUnique({
-    where: { supabaseId: user.id },
-    include: {
-      workspace: {
-        include: {
-          kanbanStages: {
-            select: { id: true, name: true, position: true },
-            orderBy: { position: 'asc' },
-          },
-          tags: {
-            select: { id: true, name: true, color: true },
-          },
-        },
-      },
-    },
-  });
-
-  if (!dbUser) redirect('/onboarding');
+  const [kanbanStages, tags] = await Promise.all([
+    db.kanbanStage
+      .findMany({
+        where: { workspaceId: workspace.id },
+        select: { id: true, name: true, position: true },
+        orderBy: { position: 'asc' },
+      })
+      .catch((error) => {
+        console.error('Failed to load kanban stages for dashboard layout:', error);
+        return [];
+      }),
+    db.tag
+      .findMany({
+        where: { workspaceId: workspace.id },
+        select: { id: true, name: true, color: true },
+      })
+      .catch((error) => {
+        console.error('Failed to load tags for dashboard layout:', error);
+        return [];
+      }),
+  ]);
 
   // Get trial status - workspace already includes trialEndsAt and stripeSubscriptionId from schema
   const trialStatus = getTrialStatus({
-    trialEndsAt: dbUser.workspace.trialEndsAt ?? null,
-    plan: dbUser.workspace.plan,
-    stripeSubscriptionId: dbUser.workspace.stripeSubscriptionId ?? null,
+    trialEndsAt: workspace.trialEndsAt ?? null,
+    plan: workspace.plan,
+    stripeSubscriptionId: workspace.stripeSubscriptionId ?? null,
   });
 
+  const userWithWorkspaceData = {
+    ...dbUser,
+    workspace: {
+      ...workspace,
+      kanbanStages,
+      tags,
+    },
+  };
+
   return (
-    <DashboardLayoutClient user={dbUser} trialStatus={trialStatus}>
+    <DashboardLayoutClient user={userWithWorkspaceData} trialStatus={trialStatus}>
       {children}
     </DashboardLayoutClient>
   );
