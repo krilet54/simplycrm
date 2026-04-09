@@ -26,7 +26,7 @@ export async function createPaymentDueTask(
       data: {
         workspaceId,
         contactId,
-        createdBy: workspace.users[0].id,
+        createdById: workspace.users[0].id,
         title: `Payment due for invoice #${invoiceId}`,
         description: `Follow up on invoice payment due on ${dueDate.toLocaleDateString()}`,
         dueDate: taskDueDate,
@@ -38,11 +38,9 @@ export async function createPaymentDueTask(
     await logActivity({
       workspaceId,
       contactId,
-      activityType: 'CONTACT_UPDATED',
-      actorId: workspace.users[0].id,
-      title: 'Auto-task created: Payment reminder',
-      description: `Invoice #${invoiceId}`,
-      metadata: { taskId: task.id, invoiceId },
+      type: 'NOTE',
+      authorId: workspace.users[0].id,
+      content: `Auto-task created: Payment reminder for Invoice #${invoiceId}`,
     });
 
     return task;
@@ -77,7 +75,7 @@ export async function createNoReplyTask(
       data: {
         workspaceId,
         contactId,
-        createdBy: workspace.users[0].id,
+        createdById: workspace.users[0].id,
         title: `Follow up with ${contact.name || contact.phoneNumber}`,
         description: 'No response in 24 hours. Send follow-up message.',
         dueDate,
@@ -89,11 +87,9 @@ export async function createNoReplyTask(
     await logActivity({
       workspaceId,
       contactId,
-      activityType: 'CONTACT_UPDATED',
-      actorId: workspace.users[0].id,
-      title: 'Auto-task created: No-reply follow-up',
-      description: '24 hours since last message',
-      metadata: { taskId: task.id, lastMessageId },
+      type: 'NOTE',
+      authorId: workspace.users[0].id,
+      content: 'Auto-task created: No-reply follow-up (24 hours since last message)',
     });
 
     return task;
@@ -118,7 +114,7 @@ export async function getWorkspaceTasks(
     where,
     include: {
       contact: { select: { id: true, name: true, phoneNumber: true } },
-      creator: { select: { id: true, name: true } },
+      createdBy: { select: { id: true, name: true } },
     },
     orderBy: { dueDate: 'asc' },
   });
@@ -135,11 +131,11 @@ export async function getTaskStats(workspaceId: string) {
   tomorrow.setDate(tomorrow.getDate() + 1);
 
   const [totalTasks, completedToday, pastDue, overdue] = await Promise.all([
-    db.task.count({ where: { workspaceId, status: { not: 'COMPLETED' } } }),
+    db.task.count({ where: { workspaceId, status: { not: 'DONE' } } }),
     db.task.count({
       where: {
         workspaceId,
-        status: 'COMPLETED',
+        status: 'DONE',
         completedAt: { gte: today, lt: tomorrow },
       },
     }),

@@ -3,13 +3,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
 import { sendEmail } from '@/lib/email';
+import { checkRateLimit } from '@/lib/rate-limit';
 import { z } from 'zod';
 
 // ── POST /api/emails ───────────────────────────────────────────────────────
 const attachmentSchema = z.object({
-  name: z.string(),
-  type: z.string(),
-  size: z.number(),
+  name: z.string().max(255),
+  type: z.string().max(100),
+  size: z.number().max(10 * 1024 * 1024), // 10MB max per attachment
   base64: z.string(),
 });
 
@@ -17,12 +18,16 @@ const createEmailSchema = z.object({
   contactId: z.string().uuid(),
   to: z.string().email(),
   subject: z.string().min(3).max(200),
-  body: z.string().min(10).max(5000),
+  body: z.string().min(10).max(50000), // 50KB max body
   sendNow: z.boolean().default(false),
-  attachments: z.array(attachmentSchema).optional(),
+  attachments: z.array(attachmentSchema).max(5).optional(), // Max 5 attachments
 });
 
 export async function POST(req: NextRequest) {
+  // Strict rate limiting for email sending
+  const rateLimitResponse = await checkRateLimit(req, 'strict');
+  if (rateLimitResponse) return rateLimitResponse;
+
   const supabase = createSupabaseServerClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -95,6 +100,13 @@ export async function POST(req: NextRequest) {
         },
         include: { contact: { select: { id: true, name: true, phoneNumber: true } } },
       });
+
+      // Update contact's lastActivityAt
+      await db.contact.update({
+        where: { id: contactId },
+        data: { lastActivityAt: new Date() },
+      });
+
       return NextResponse.json({ email }, { status: 201 });
     }
   } catch (error) {
@@ -129,7 +141,7 @@ export async function GET(req: NextRequest) {
     include: {
       contact: { select: { id: true, name: true, phoneNumber: true } },
     },
-    orderBy: { sentAt: 'desc' },
+    orderBy: { createdAt: 'desc' },
   });
 
   return NextResponse.json({ emails });

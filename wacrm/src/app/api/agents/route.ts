@@ -17,13 +17,41 @@ export async function GET() {
   const dbUser = await getUser();
   if (!dbUser) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const agents = await db.user.findMany({
-    where: { workspaceId: dbUser.workspaceId },
-    select: { id: true, name: true, email: true, role: true, avatarUrl: true, isOnline: true, createdAt: true },
-    orderBy: { name: 'asc' },
-  });
+  try {
+    // Use raw SQL to include phoneNumber (bypasses Prisma type issues)
+    const agents = await db.$queryRaw<Array<{
+      id: string;
+      name: string;
+      email: string;
+      role: string;
+      avatarUrl: string | null;
+      phoneNumber: string | null;
+      isOnline: boolean;
+      createdAt: Date;
+    }>>`
+      SELECT "id", "name", "email", "role", "avatarUrl", "phoneNumber", "isOnline", "createdAt"
+      FROM "users"
+      WHERE "workspaceId" = ${dbUser.workspaceId}
+      ORDER BY "name" ASC
+    `;
 
-  return NextResponse.json({ agents });
+    return NextResponse.json({ agents });
+  } catch (error: any) {
+    // If phoneNumber column doesn't exist, fallback to Prisma
+    if (error.message?.includes('phoneNumber') || error.message?.includes('column')) {
+      const agents = await db.user.findMany({
+        where: { workspaceId: dbUser.workspaceId },
+        select: { id: true, name: true, email: true, role: true, avatarUrl: true, isOnline: true, createdAt: true },
+        orderBy: { name: 'asc' },
+      });
+      // Add null phoneNumber to each agent
+      const agentsWithPhone = agents.map(a => ({ ...a, phoneNumber: null }));
+      return NextResponse.json({ agents: agentsWithPhone });
+    }
+    
+    console.error('Failed to fetch agents:', error);
+    return NextResponse.json({ error: 'Failed to fetch agents' }, { status: 500 });
+  }
 }
 
 // ── POST /api/agents - invite a new team member ───────────────────────────────

@@ -2,5 +2,5 @@
 import { redirect } from 'next/navigation';
 
 export default function TasksRedirect() {
-  redirect('/dashboard/kanban?view=tasks');
+  redirect('/dashboard/tasks');
 }

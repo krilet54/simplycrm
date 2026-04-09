@@ -93,16 +93,20 @@ export async function sendEmail({
       data: { status: 'SENT', sentAt: new Date() },
     });
 
+    // Update contact's lastActivityAt
+    await db.contact.update({
+      where: { id: contactId },
+      data: { lastActivityAt: new Date() },
+    });
+
     // Log activity
     const { logActivity } = await import('@/lib/activity');
     await logActivity({
       workspaceId,
       contactId,
-      activityType: 'EMAIL_SENT',
-      actorId: actorId || '',
-      title: `Email sent: "${subject}"`,
-      description: `To: ${to}${attachments?.length ? ` (${attachments.length} attachment${attachments.length > 1 ? 's' : ''})` : ''}`,
-      metadata: { emailId: email.id, subject },
+      type: 'EMAIL',
+      authorId: actorId || '',
+      content: `Email sent: "${subject}" to ${to}${attachments?.length ? ` (${attachments.length} attachment${attachments.length > 1 ? 's' : ''})` : ''}`,
     });
 
     return sentEmail;
@@ -125,7 +129,7 @@ function formatEmailBody(body: string): string {
           .join('')}
         <hr style="margin-top: 32px; border: none; border-top: 1px solid #e5e7eb;" />
         <p style="font-size: 12px; color: #999; margin-top: 16px;">
-          Sent from WACRM
+          Sent from Crebo
         </p>
       </div>
     </div>

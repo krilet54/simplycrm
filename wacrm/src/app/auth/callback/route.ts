@@ -5,8 +5,11 @@ import { db } from '@/lib/db';
 
 export async function GET(req: NextRequest) {
   const { searchParams, origin } = new URL(req.url);
-  const code        = searchParams.get('code');
+  const code = searchParams.get('code');
+  const type = searchParams.get('type');
   const workspaceId = searchParams.get('workspace');
+  const email = searchParams.get('email');
+  const role = searchParams.get('role') || 'AGENT';
 
   if (code) {
     const supabase = createSupabaseServerClient();
@@ -18,23 +21,28 @@ export async function GET(req: NextRequest) {
         where: { supabaseId: data.user.id },
       });
 
-      // If invited user (has workspaceId param) and no DB record yet, create one
+      // If invited user (has workspaceId param) and no DB record yet
       if (!existing && workspaceId) {
         const workspace = await db.workspace.findUnique({ where: { id: workspaceId } });
         if (workspace) {
+          // Create user in the workspace
           await db.user.create({
             data: {
               supabaseId: data.user.id,
               workspaceId,
               name: data.user.user_metadata?.name ?? data.user.email?.split('@')[0] ?? 'Agent',
               email: data.user.email!,
-              role: 'AGENT',
+              role: (role as any) || 'AGENT',
             },
           });
+
+          // Redirect to workspace join onboarding  
+          return NextResponse.redirect(`${origin}/workspace-join?workspace=${workspaceId}&first_time=true`);
         }
       }
 
-      return NextResponse.redirect(`${origin}/dashboard/inbox`);
+      // For existing users or regular auth, go to dashboard
+      return NextResponse.redirect(`${origin}/dashboard`);
     }
   }
 

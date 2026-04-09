@@ -89,11 +89,9 @@ export async function importContactsFromCSV(
       await logActivity({
         workspaceId,
         contactId: created.id,
-        activityType: 'CONTACT_CREATED',
-        actorId: userId,
-        title: `Contact imported: ${created.name || created.phoneNumber}`,
-        description: 'Imported from CSV',
-        metadata: { source: 'csv_import' },
+        type: 'CONTACT_ADDED',
+        authorId: userId,
+        content: `Contact imported: ${created.name || created.phoneNumber}`,
       });
 
       results.imported++;

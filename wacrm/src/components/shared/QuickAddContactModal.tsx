@@ -1,7 +1,7 @@
 // src/components/shared/QuickAddContactModal.tsx
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 
 interface KanbanStage {
@@ -14,6 +14,12 @@ interface Tag {
   id: string;
   name: string;
   color: string;
+}
+
+interface TeamMember {
+  id: string;
+  name: string;
+  role: string;
 }
 
 interface QuickAddContactModalProps {
@@ -31,15 +37,34 @@ export default function QuickAddContactModal({
 }: QuickAddContactModalProps) {
   const [formData, setFormData] = useState({
     name: '',
-    phone: '',
+    phoneNumber: '',
     email: '',
     interest: '',
     kanbanStageId: kanbanStages[0]?.id || '',
     sourceNote: '',
     estimatedValue: '',
+    assignedToId: '',
   });
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+
+  // Fetch team members on mount
+  useEffect(() => {
+    const fetchTeamMembers = async () => {
+      try {
+        const res = await fetch('/api/contacts/team-members', { credentials: 'include' });
+        if (res.ok) {
+          const data = await res.json();
+          setTeamMembers(data.members || []);
+        }
+      } catch (err) {
+        console.error('Failed to fetch team members:', err);
+      }
+    };
+
+    fetchTeamMembers();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,7 +73,7 @@ export default function QuickAddContactModal({
       toast.error('Name is required');
       return;
     }
-    if (!formData.phone.trim()) {
+    if (!formData.phoneNumber.trim()) {
       toast.error('Phone is required');
       return;
     }
@@ -60,12 +85,13 @@ export default function QuickAddContactModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: formData.name.trim(),
-          phone: formData.phone.trim(),
+          phoneNumber: formData.phoneNumber.trim(),
           email: formData.email.trim() || null,
           interest: formData.interest.trim() || null,
           kanbanStageId: formData.kanbanStageId || null,
           sourceNote: formData.sourceNote.trim() || null,
           estimatedValue: formData.estimatedValue ? parseFloat(formData.estimatedValue) : null,
+          assignedToId: formData.assignedToId || null,
           tagIds: selectedTags,
         }),
       });
@@ -132,8 +158,8 @@ export default function QuickAddContactModal({
             </label>
             <input
               type="tel"
-              value={formData.phone}
-              onChange={e => setFormData({ ...formData, phone: e.target.value })}
+              value={formData.phoneNumber}
+              onChange={e => setFormData({ ...formData, phoneNumber: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-forest-500 focus:border-forest-500"
               placeholder="+234 800 000 0000"
             />
@@ -183,9 +209,28 @@ export default function QuickAddContactModal({
             </div>
           )}
 
+          {/* Assign To Team Member */}
+          {teamMembers.length > 0 && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Assign To Team Member</label>
+              <select
+                value={formData.assignedToId}
+                onChange={e => setFormData({ ...formData, assignedToId: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-forest-500 focus:border-forest-500"
+              >
+                <option value="">Not assigned</option>
+                {teamMembers.map(member => (
+                  <option key={member.id} value={member.id}>
+                    {member.name} ({member.role})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {/* Estimated Value */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Estimated Value (₦)</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Estimated Value (₹)</label>
             <input
               type="number"
               value={formData.estimatedValue}

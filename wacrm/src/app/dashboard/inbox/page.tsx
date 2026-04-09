@@ -3,33 +3,32 @@ import { getAuthenticatedUser } from '@/lib/auth';
 import { db } from '@/lib/db';
 import InboxClient from '@/components/inbox/InboxClient';
 
+export const metadata = {
+  title: 'Activity Hub | Crebo',
+};
+
 export default async function InboxPage() {
   const { dbUser, workspace } = await getAuthenticatedUser();
 
-  // Fetch contacts with latest messages
+  // Fetch contacts with latest activities
   const contacts = await db.contact.findMany({
     where: { workspaceId: workspace.id },
-    orderBy: { lastMessageAt: { sort: 'desc', nulls: 'last' } },
-    take: 50,
+    orderBy: { lastActivityAt: { sort: 'desc', nulls: 'last' } },
+    take: 100,
     include: {
       kanbanStage: true,
       contactTags: { include: { tag: true } },
-      messages: {
+      activities: {
         orderBy: { timestamp: 'desc' },
         take: 1,
-        select: { content: true, timestamp: true, senderType: true, isRead: true },
+        select: { content: true, timestamp: true, type: true },
       },
       _count: {
         select: {
-          messages: { where: { isRead: false, senderType: 'CUSTOMER' } },
+          activities: true,
         },
       },
     },
-  });
-
-  const quickReplies = await db.quickReply.findMany({
-    where: { workspaceId: workspace.id },
-    orderBy: { shortcut: 'asc' },
   });
 
   const agents = await db.user.findMany({
@@ -49,7 +48,6 @@ export default async function InboxPage() {
   return (
     <InboxClient
       initialContacts={contacts as any}
-      quickReplies={quickReplies}
       agents={agents}
       currentUser={dbUser}
       workspace={wsData || { id: workspace.id, kanbanStages: [] }}

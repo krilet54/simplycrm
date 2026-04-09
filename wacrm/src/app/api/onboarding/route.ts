@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
+import { checkRateLimit } from '@/lib/rate-limit';
 import { z } from 'zod';
 
 const schema = z.object({
@@ -12,6 +13,10 @@ const schema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  // Strict rate limiting for onboarding
+  const rateLimitResponse = await checkRateLimit(req, 'auth');
+  if (rateLimitResponse) return rateLimitResponse;
+
   const supabase = createSupabaseServerClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -23,15 +28,14 @@ export async function POST(req: NextRequest) {
   const parsed = schema.safeParse(await req.json());
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
 
-  const { businessName, ownerName, phoneNumberId, accessToken } = parsed.data;
+  const { businessName, ownerName } = parsed.data;
 
   // Create workspace + owner in a transaction
   const workspace = await db.workspace.create({
     data: {
       businessName,
-      whatsappPhoneNumberId: phoneNumberId || null,
-      whatsappAccessToken:   accessToken || null,
       plan: 'TRIAL',
+      trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000), // 14 days from now
     },
   });
 

@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
+import { checkRateLimit } from '@/lib/rate-limit';
 import { z } from 'zod';
 
 async function getUser() {
@@ -13,6 +14,9 @@ async function getUser() {
 
 // ── GET /api/notes?contactId=xxx ──────────────────────────────────────────────
 export async function GET(req: NextRequest) {
+  const rateLimitResponse = await checkRateLimit(req, 'general');
+  if (rateLimitResponse) return rateLimitResponse;
+
   const dbUser = await getUser();
   if (!dbUser) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -36,10 +40,13 @@ export async function GET(req: NextRequest) {
 // ── POST /api/notes ───────────────────────────────────────────────────────────
 const createSchema = z.object({
   contactId: z.string().uuid(),
-  content: z.string().min(1).max(2000),
+  content: z.string().min(1).max(10000), // Increased max length for notes
 });
 
 export async function POST(req: NextRequest) {
+  const rateLimitResponse = await checkRateLimit(req, 'general');
+  if (rateLimitResponse) return rateLimitResponse;
+
   const dbUser = await getUser();
   if (!dbUser) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -61,6 +68,12 @@ export async function POST(req: NextRequest) {
       content: parsed.data.content,
     },
     include: { author: { select: { id: true, name: true, avatarUrl: true } } },
+  });
+
+  // Update contact's lastActivityAt
+  await db.contact.update({
+    where: { id: parsed.data.contactId },
+    data: { lastActivityAt: new Date() },
   });
 
   return NextResponse.json({ note }, { status: 201 });

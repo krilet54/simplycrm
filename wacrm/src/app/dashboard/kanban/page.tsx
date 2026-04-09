@@ -13,7 +13,7 @@ interface PageProps {
 }
 
 export default async function KanbanPage({ searchParams }: PageProps) {
-  const { workspace, user } = await getAuthenticatedUser();
+  const { dbUser, workspace } = await getAuthenticatedUser();
   const params = await searchParams;
   const isTasksView = params.view === 'tasks';
 
@@ -39,15 +39,15 @@ export default async function KanbanPage({ searchParams }: PageProps) {
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     
     const outstanding = invoices.filter(inv => 
-      inv.status === 'SENT' || inv.status === 'OVERDUE'
+      inv.status === 'DRAFT' || inv.status === 'SENT' || inv.status === 'OVERDUE'
     );
     const paidThisMonth = invoices.filter(inv => 
       inv.status === 'PAID' && inv.paidAt && inv.paidAt >= startOfMonth
     );
 
     const invoiceStats = {
-      totalOutstanding: outstanding.reduce((sum, inv) => sum + inv.total, 0),
-      totalPaidThisMonth: paidThisMonth.reduce((sum, inv) => sum + inv.total, 0),
+      totalOutstanding: outstanding.reduce((sum, inv) => sum + inv.amount, 0),
+      totalPaidThisMonth: paidThisMonth.reduce((sum, inv) => sum + inv.amount, 0),
       outstandingCount: outstanding.length,
       paidThisMonthCount: paidThisMonth.length,
     };
@@ -58,7 +58,7 @@ export default async function KanbanPage({ searchParams }: PageProps) {
         initialInvoices={invoices as any}
         stats={stats}
         invoiceStats={invoiceStats}
-        currentUser={user}
+        currentUser={dbUser}
         workspace={workspace}
       />
     );
@@ -69,15 +69,9 @@ export default async function KanbanPage({ searchParams }: PageProps) {
     orderBy: { position: 'asc' },
     include: {
       contacts: {
-        orderBy: { lastMessageAt: { sort: 'desc', nulls: 'last' } },
+        orderBy: { lastActivityAt: { sort: 'desc', nulls: 'last' } },
         include: {
           contactTags: { include: { tag: true } },
-          _count: { select: { messages: true } },
-          messages: {
-            take: 1,
-            orderBy: { timestamp: 'desc' },
-            select: { content: true, timestamp: true },
-          },
         },
       },
     },

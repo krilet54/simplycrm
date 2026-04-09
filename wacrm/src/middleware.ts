@@ -3,6 +3,20 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
 export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+  
+  // Skip auth check for public paths, marketing pages, and API routes (APIs handle auth themselves)
+  const publicPaths = ['/login', '/auth/callback', '/auth/join-workspace', '/join/', '/api/', '/terms', '/privacy'];
+  const isPublic = publicPaths.some((p) => pathname.startsWith(p));
+  
+  // Marketing landing page is also public
+  const isMarketingRoot = pathname === '/';
+  
+  // Fast path: skip middleware entirely for public routes
+  if (isPublic || isMarketingRoot) {
+    return NextResponse.next();
+  }
+
   let response = NextResponse.next({
     request: { headers: request.headers },
   });
@@ -31,17 +45,13 @@ export async function middleware(request: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser();
 
-  const { pathname } = request.nextUrl;
-
-  // Public routes
-  const publicPaths = ['/login', '/auth/callback', '/api/webhook/whatsapp'];
-  const isPublic = publicPaths.some((p) => pathname.startsWith(p));
-
-  if (!user && !isPublic) {
+  // Redirect unauthenticated users to login
+  if (!user) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
-  if (user && pathname === '/login') {
+  // Redirect authenticated users away from login
+  if (pathname === '/login') {
     return NextResponse.redirect(new URL('/', request.url));
   }
 
@@ -50,6 +60,7 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    // Only run on actual pages - exclude all static files and assets
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|json|txt|xml|css|js|woff|woff2|ttf|eot|ico)$).*)',
   ],
 };

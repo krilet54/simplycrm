@@ -1,34 +1,22 @@
 // src/types/index.ts
-export type MessageStatus = 'SENDING' | 'SENT' | 'DELIVERED' | 'READ' | 'FAILED';
-export type SenderType = 'AGENT' | 'CUSTOMER' | 'SYSTEM';
-export type MessageType = 'TEXT' | 'IMAGE' | 'AUDIO' | 'VIDEO' | 'DOCUMENT' | 'TEMPLATE';
 export type AgentRole = 'OWNER' | 'ADMIN' | 'AGENT';
 export type Plan = 'STARTER' | 'PRO' | 'TRIAL';
 export type ContactSource = 'WHATSAPP' | 'WALK_IN' | 'PHONE_CALL' | 'REFERRAL' | 'SOCIAL_MEDIA' | 'EVENT' | 'OTHER';
 export type InvoiceStatus = 'DRAFT' | 'SENT' | 'PAID' | 'OVERDUE' | 'CANCELLED';
-export type ActivityType =
-  | 'CONTACT_CREATED'
-  | 'CONTACT_UPDATED'
-  | 'MESSAGE_SENT'
-  | 'MESSAGE_RECEIVED'
-  | 'NOTE_ADDED'
-  | 'INVOICE_CREATED'
-  | 'INVOICE_SENT'
-  | 'INVOICE_PAID'
-  | 'STAGE_CHANGED'
-  | 'TAG_ADDED'
-  | 'TAG_REMOVED'
-  | 'EMAIL_SENT'
-  | 'CALL_LOGGED';
-export type TaskStatus = 'TODO' | 'IN_PROGRESS' | 'COMPLETED' | 'SNOOZED';
+export type ActivityTypeEnum = 'NOTE' | 'CALL' | 'MEETING' | 'EMAIL' | 'WHATSAPP' | 'INVOICE_SENT' | 'STAGE_CHANGE' | 'CONTACT_ADDED' | 'OTHER';
+export type TaskStatus = 'TODO' | 'IN_PROGRESS' | 'DONE';
 export type TaskPriority = 'LOW' | 'MEDIUM' | 'HIGH';
 export type TaskType = 'MANUAL' | 'AUTO_PAYMENT_DUE' | 'AUTO_NO_REPLY_24H' | 'AUTO_INVOICE_SENT' | 'AUTO_INVOICE_OVERDUE';
 export type EmailStatus = 'DRAFT' | 'SENT' | 'BOUNCED' | 'FAILED';
+export type ConfidenceLevel = 'HIGH_INTENT' | 'EXPLORATORY' | 'NEGOTIATING' | 'DEMO_SCHEDULED';
+
+// New types for restructured API
+export type TaskStatusType = 'TODO' | 'IN_PROGRESS' | 'DONE';
+export type TaskPriorityType = 'LOW' | 'MEDIUM' | 'HIGH';
 
 export interface WorkspaceType {
   id: string;
   businessName: string;
-  whatsappPhoneNumberId?: string | null;
   plan: Plan;
   createdAt: Date;
   metaOAuthToken?: MetaOAuthTokenType | null;
@@ -59,24 +47,30 @@ export interface ContactType {
   sourceNote?: string | null;
   interest?: string | null;
   estimatedValue?: number | null;
-  lastMessageAt?: Date | null;
+  confidenceLevel?: ConfidenceLevel | null;
+  lastActivityAt?: Date | null;
+  // Delegation fields
+  assignedToId?: string | null;
+  assignedById?: string | null;
+  assignedTo?: UserType | null;
+  assignedBy?: UserType | null;
+  delegationNote?: string | null;
+  assignmentStatus?: 'ACTIVE' | 'COMPLETED' | null;
+  assignedAt?: Date | null;
+  completedAt?: Date | null;
   contactTags: ContactTagType[];
-  messages?: Array<{ content: string; timestamp: Date; senderType: string; isRead: boolean }>;
-  _count?: { messages: number };
+  activities?: ActivityRecord[];
+  _count?: { activities: number };
 }
 
-export interface MessageType2 {
+export interface ActivityRecord {
   id: string;
+  workspaceId: string;
   contactId: string;
-  agentId?: string | null;
-  agent?: UserType | null;
-  wamid?: string | null;
-  senderType: SenderType;
-  type: MessageType;
+  authorId?: string | null;
+  author?: { id: string; name: string; avatarUrl?: string | null } | null;
+  type: ActivityTypeEnum;
   content: string;
-  mediaUrl?: string | null;
-  status: MessageStatus;
-  isRead: boolean;
   timestamp: Date;
 }
 
@@ -140,6 +134,7 @@ export interface InvoiceType {
   dueDate?: Date | null;
   sentAt?: Date | null;
   paidAt?: Date | null;
+  notes?: string | null;
   items?: InvoiceItemType[];
   createdAt: Date;
   updatedAt: Date;
@@ -161,28 +156,23 @@ export interface ActivityType2 {
   id: string;
   workspaceId: string;
   contactId: string;
-  activityType: ActivityType;
-  actorId: string;
-  actor?: UserType;
-  contact?: ContactType;
-  title: string;
-  description?: string | null;
-  metadata?: Record<string, any> | null;
+  authorId?: string | null;
+  author?: { id: string; name: string; avatarUrl?: string | null } | null;
+  type: ActivityTypeEnum;
+  content: string;
   timestamp: Date;
-  createdAt: Date;
-  updatedAt: Date;
 }
 
 export interface TaskType2 {
   id: string;
   workspaceId: string;
-  contactId: string;
-  createdBy: string;
-  creator?: { id: string; name: string; avatarUrl?: string | null };
-  contact?: { id: string; name: string | null; phoneNumber: string };
+  contactId: string | null;
+  createdById: string;
+  createdBy: { id: string; name: string };
+  contact?: { id: string; name: string | null; phoneNumber: string } | null;
   title: string;
   description?: string | null;
-  dueDate: Date;
+  dueDate: Date | null;
   status: TaskStatus;
   priority: TaskPriority;
   type: TaskType;
@@ -207,4 +197,42 @@ export interface EmailType2 {
   openedAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
+}
+
+// Task and FollowUp types for restructured pages
+export interface TaskObjectType {
+  id: string;
+  workspaceId: string;
+  contactId?: string | null;
+  contact?: { id: string; name?: string | null; phoneNumber: string } | null;
+  createdById: string;
+  createdBy: { id: string; name: string };
+  assignedToId?: string | null;
+  assignedTo?: { id: string; name: string; avatarUrl?: string | null } | null;
+  title: string;
+  description?: string | null;
+  status: TaskStatusType;
+  priority: TaskPriorityType;
+  dueDate?: Date | null;
+  completedAt?: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface FollowUpType {
+  id: string;
+  workspaceId: string;
+  contactId: string;
+  contact: {
+    id: string;
+    name?: string | null;
+    phoneNumber: string;
+    kanbanStage?: { name: string; color: string } | null;
+  };
+  createdById: string;
+  note?: string | null;
+  dueDate: Date;
+  isDone: boolean;
+  doneAt?: Date | null;
+  createdAt: Date;
 }

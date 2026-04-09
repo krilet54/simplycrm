@@ -12,6 +12,7 @@ interface Props {
   contacts: ContactType[];
   tags:     TagType[];
   stages:   KanbanStageType[];
+  onContactSelect?: (contactId: string) => void;
 }
 
 const SOURCE_OPTIONS: { value: ContactSource; label: string; emoji: string }[] = [
@@ -24,7 +25,7 @@ const SOURCE_OPTIONS: { value: ContactSource; label: string; emoji: string }[] =
   { value: 'OTHER', label: 'Other', emoji: '❓' },
 ];
 
-export default function ContactsClient({ contacts: init, tags, stages }: Props) {
+export default function ContactsClient({ contacts: init, tags, stages, onContactSelect }: Props) {
   const [contacts,    setContacts]    = useState<ContactType[]>(init);
   const [search,      setSearch]      = useState('');
   const [filterTag,   setFilterTag]   = useState('');
@@ -187,24 +188,26 @@ export default function ContactsClient({ contacts: init, tags, stages }: Props) 
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">{contacts.length} total contacts</p>
         </div>
-        <button onClick={openCreate} className="btn-primary">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-          </svg>
-          Add Contact
-        </button>
-        <button onClick={() => setShowCSVModal(true)} className="btn-secondary flex items-center gap-2">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
-          </svg>
-          CSV
-        </button>
-        <button onClick={() => setShowDuplicateModal(true)} className="btn-secondary flex items-center gap-2">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M7 18c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zM17 8c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/><path d="M9 9h6M9 15h6"/>
-          </svg>
-          Duplicates
-        </button>
+        <div className="flex items-center gap-3">
+          <button onClick={() => setShowDuplicateModal(true)} className="btn-secondary flex items-center gap-2">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M7 18c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zM17 8c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/><path d="M9 9h6M9 15h6"/>
+            </svg>
+            Duplicates
+          </button>
+          <button onClick={() => setShowCSVModal(true)} className="btn-secondary flex items-center gap-2">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+            </svg>
+            CSV
+          </button>
+          <button onClick={openCreate} className="btn-primary">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            Add Contact
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -283,7 +286,7 @@ export default function ContactsClient({ contacts: init, tags, stages }: Props) 
             </thead>
             <tbody className="divide-y divide-gray-50">
               {filtered.map((contact) => (
-                <tr key={contact.id} className="hover:bg-gray-50 transition-colors group">
+                <tr key={contact.id} onClick={() => onContactSelect?.(contact.id)} className="hover:bg-gray-50 transition-colors group cursor-pointer">
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-3">
                       <div className="relative">
@@ -343,7 +346,7 @@ export default function ContactsClient({ contacts: init, tags, stages }: Props) 
                   <td className="px-5 py-3.5">
                     <span className="text-sm text-gray-600 font-semibold" suppressHydrationWarning>
                       {contact.estimatedValue
-                        ? `₦${contact.estimatedValue.toLocaleString('en-US')}`
+                        ? `₹${contact.estimatedValue.toLocaleString('en-US')}`
                         : <span className="text-gray-300">—</span>
                       }
                     </span>
@@ -353,8 +356,8 @@ export default function ContactsClient({ contacts: init, tags, stages }: Props) 
                   </td>
                   <td className="px-5 py-3.5">
                     <span className="text-sm text-gray-500" suppressHydrationWarning>
-                      {contact.lastMessageAt
-                        ? format(new Date(contact.lastMessageAt), 'dd MMM yyyy')
+                      {contact.lastActivityAt
+                        ? format(new Date(contact.lastActivityAt), 'dd MMM yyyy')
                         : '—'}
                     </span>
                   </td>
@@ -483,7 +486,7 @@ export default function ContactsClient({ contacts: init, tags, stages }: Props) 
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Estimated value (₦)</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Estimated value (₹)</label>
                     <input
                       className="input"
                       type="number"

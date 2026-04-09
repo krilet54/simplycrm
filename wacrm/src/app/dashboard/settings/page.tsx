@@ -6,9 +6,10 @@ import SettingsClient from '@/components/SettingsClient';
 export default async function SettingsPage() {
   const { dbUser, workspace } = await getAuthenticatedUser();
 
-  const [quickReplies, tags] = await Promise.all([
+  const [quickReplies, tags, kanbanStages] = await Promise.all([
     db.quickReply.findMany({ where: { workspaceId: workspace.id }, orderBy: { shortcut: 'asc' } }),
     db.tag.findMany({ where: { workspaceId: workspace.id }, orderBy: { name: 'asc' } }),
+    db.kanbanStage.findMany({ where: { workspaceId: workspace.id }, orderBy: { position: 'asc' } }),
   ]);
 
   return (
@@ -17,6 +18,7 @@ export default async function SettingsPage() {
       currentUser={dbUser}
       quickReplies={quickReplies}
       tags={tags}
+      kanbanStages={kanbanStages}
     />
   );
 }

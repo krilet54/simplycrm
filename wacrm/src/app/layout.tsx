@@ -4,14 +4,68 @@ import './globals.css';
 import { Toaster } from 'react-hot-toast';
 
 export const metadata: Metadata = {
-  title: 'WaCRM – WhatsApp CRM for Micro-Businesses',
-  description: 'Turn your WhatsApp into a shared inbox, Kanban board, and contact database.',
-  icons: { icon: '/favicon.ico' },
+  // Basic
+  title: {
+    default: 'Crebo — Your business, credibly run',
+    template: '%s | Crebo'
+  },
+  description: 'Organise your customers, track your pipeline, send invoices and follow up — all in one place. Built for small businesses in India.',
+  
+  // Favicon
+  icons: {
+    icon: '/crebo logo 2.png',
+    apple: '/crebo logo 2.png',
+    shortcut: '/crebo logo 2.png',
+  },
+
+  // Open Graph (WhatsApp, Facebook)
+  openGraph: {
+    type: 'website',
+    url: 'https://crebo.io',
+    title: 'Crebo — Your business, credibly run',
+    description: 'Stop losing customers to disorganisation. Crebo helps small businesses organise contacts, track pipeline, and get paid faster.',
+    siteName: 'Crebo',
+    images: [
+      {
+        url: '/og-image.png',
+        width: 1200,
+        height: 630,
+        alt: 'Crebo — Your business, credibly run',
+      },
+    ],
+  },
+
+  // Twitter Card
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Crebo — Your business, credibly run',
+    description: 'Stop losing customers to disorganisation. Organise contacts, track pipeline, get paid faster.',
+    images: ['/og-image.png'],
+  },
+
+  // App meta
+  applicationName: 'Crebo',
+  keywords: [
+    'CRM', 'small business', 'India', 
+    'business CRM', 'invoice', 'customer management',
+    'pipeline', 'small business India', 'CRM software'
+  ],
+  authors: [{ name: 'Crebo' }],
+  
+  // Robots
+  robots: {
+    index: true,
+    follow: true,
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
+      <head>
+        {/* Razorpay Checkout Script */}
+        <script src="https://checkout.razorpay.com/v1/checkout.js" async></script>
+      </head>
       <body>
         {children}
         <Toaster

@@ -1,0 +1,6 @@
+<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <!-- Green background -->
+  <rect width="200" height="200" fill="#1DB854"/>
+  <!-- Black C shape -->
+  <path d="M 50 30 A 85 85 0 1 1 50 170 A 60 60 0 0 0 50 55 A 60 60 0 0 0 50 145 A 85 85 0 0 1 50 30 Z" fill="black"/>
+</svg>

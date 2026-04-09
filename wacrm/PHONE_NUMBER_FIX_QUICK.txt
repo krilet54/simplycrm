@@ -1,0 +1,51 @@
+╔══════════════════════════════════════════════════════════════════╗
+║                   PHONE NUMBER SAVE ERROR - QUICK FIX             ║
+╚══════════════════════════════════════════════════════════════════╝
+
+ERROR YOU GOT:
+  "Invalid `prisma.user.update()` invocation"
+  "phoneNumber is not a valid field"
+
+WHY:
+  Prisma client types weren't regenerated after schema change
+  Migration wasn't deployed to database
+
+SOLUTION:
+
+  Option 1 (EASIEST - Windows):
+  ────────────────────────────
+  1. Double-click: fix-prisma-and-migrate.bat
+  2. Wait for "✅ SUCCESS" message
+  3. Done! 
+
+  Option 2 (Manual):
+  ────────────────
+  1. Open Command Prompt
+  2. Run: npx prisma generate
+  3. Run: npx prisma migrate deploy
+  4. Done!
+
+  Option 3 (Single command for dev):
+  ──────────────────────────────────
+  1. Open Command Prompt
+  2. Run: npx prisma migrate dev
+  3. Done!
+
+VERIFY IT WORKS:
+  1. Go to: Settings → Workspace → Your Profile
+  2. Enter phone number
+  3. Click "Save Profile"
+  4. Should see: "Profile updated" ✅
+  5. Refresh page
+  6. Phone should still be there ✅
+
+TIME NEEDED: ~2 minutes
+
+FILES CREATED TO HELP:
+  ✓ fix-prisma-and-migrate.bat     (Double-click to auto-fix)
+  ✓ PHONE_NUMBER_FIX_INSTRUCTIONS.md  (Detailed guide)
+  ✓ PRISMA_CLIENT_ISSUE_ANALYSIS.md   (Technical explanation)
+
+HAVE QUESTIONS?
+  Read: PHONE_NUMBER_FIX_INSTRUCTIONS.md in this folder
+  Or:   Files → PHONE_NUMBER_FIX_INSTRUCTIONS.md in session

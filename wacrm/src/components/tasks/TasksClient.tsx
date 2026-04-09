@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { TaskType2, TaskStatus, TaskPriority } from '@/types';
+import TaskCreateModal from './TaskCreateModal';
 
 interface InvoiceItem {
   id: string;
@@ -27,9 +28,7 @@ interface Invoice {
   id: string;
   invoiceNumber: string;
   status: string;
-  total: number;
-  tax: number;
-  subtotal: number;
+  amount: number;
   dueDate: string | Date | null;
   paidAt: string | Date | null;
   createdAt: string | Date;
@@ -56,7 +55,7 @@ interface TasksClientProps {
   workspace: any;
 }
 
-type FilterStatus = 'ALL' | 'TODO' | 'IN_PROGRESS' | 'COMPLETED' | 'OVERDUE';
+type FilterStatus = 'ALL' | 'TODO' | 'IN_PROGRESS' | 'DONE' | 'OVERDUE';
 type InvoiceFilterType = 'all' | 'outstanding' | 'paid' | 'overdue' | 'draft';
 type TabType = 'tasks' | 'invoices';
 
@@ -74,18 +73,19 @@ export default function TasksClient({
   const [filter, setFilter] = useState<FilterStatus>('ALL');
   const [invoiceFilter, setInvoiceFilter] = useState<InvoiceFilterType>('all');
   const [loading, setLoading] = useState(false);
+  const [showCreateTaskModal, setShowCreateTaskModal] = useState(false);
   const router = useRouter();
 
   const filteredTasks = tasks.filter((task) => {
     if (filter === 'ALL') return true;
     if (filter === 'OVERDUE') {
-      return task.status !== 'COMPLETED' && new Date(task.dueDate) < new Date();
+      return task.status !== 'DONE' && task.dueDate && new Date(task.dueDate) < new Date();
     }
     return task.status === filter;
   });
 
   const filteredInvoices = invoices.filter(invoice => {
-    if (invoiceFilter === 'outstanding' && invoice.status !== 'SENT' && invoice.status !== 'OVERDUE') return false;
+    if (invoiceFilter === 'outstanding' && invoice.status !== 'DRAFT' && invoice.status !== 'SENT' && invoice.status !== 'OVERDUE') return false;
     if (invoiceFilter === 'paid' && invoice.status !== 'PAID') return false;
     if (invoiceFilter === 'overdue' && invoice.status !== 'OVERDUE') return false;
     if (invoiceFilter === 'draft' && invoice.status !== 'DRAFT') return false;
@@ -98,7 +98,7 @@ export default function TasksClient({
       const res = await fetch(`/api/tasks/${taskId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'COMPLETED' }),
+        body: JSON.stringify({ status: 'DONE' }),
       });
       if (res.ok) {
         const { task } = await res.json();
@@ -122,7 +122,8 @@ export default function TasksClient({
         setTasks((prev) => prev.filter((t) => t.id !== taskId));
         toast.success('Task deleted');
       } else {
-        toast.error('Can only delete TODO tasks');
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || 'Failed to delete task');
       }
     } catch (error) {
       console.error('Failed to delete task:', error);
@@ -160,7 +161,7 @@ export default function TasksClient({
 
   const getStatusIcon = (status: TaskStatus) => {
     switch (status) {
-      case 'COMPLETED':
+      case 'DONE':
         return <CheckCircle2 className="w-4 h-4 text-green-600" />;
       case 'IN_PROGRESS':
         return <Clock className="w-4 h-4 text-blue-600" />;
@@ -170,12 +171,12 @@ export default function TasksClient({
   };
 
   const isOverdue = (task: TaskType2) =>
-    task.status !== 'COMPLETED' && new Date(task.dueDate) < new Date();
+    task.status !== 'DONE' && task.dueDate && new Date(task.dueDate) < new Date();
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-NG', {
+    return new Intl.NumberFormat('en-IN', {
       style: 'currency',
-      currency: 'NGN',
+      currency: 'INR',
       minimumFractionDigits: 0,
     }).format(amount);
   };
@@ -235,13 +236,13 @@ export default function TasksClient({
                 <h1 className="text-3xl font-bold text-gray-900">Follow-ups</h1>
                 <p className="text-gray-600 mt-1">Manage and track all your follow-up tasks</p>
               </div>
-              <Link
-                href="/tasks/new"
+              <button
+                onClick={() => setShowCreateTaskModal(true)}
                 className="bg-forest-600 hover:bg-forest-700 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition"
               >
                 <Plus className="w-4 h-4" />
                 New Task
-              </Link>
+              </button>
             </div>
 
             {/* Stats Cards */}
@@ -266,7 +267,7 @@ export default function TasksClient({
 
             {/* Filters */}
             <div className="flex gap-2 mb-6 border-b border-gray-200 pb-4">
-              {(['ALL', 'TODO', 'IN_PROGRESS', 'COMPLETED', 'OVERDUE'] as const).map((f) => (
+              {(['ALL', 'TODO', 'IN_PROGRESS', 'DONE', 'OVERDUE'] as const).map((f) => (
                 <button
                   key={f}
                   onClick={() => setFilter(f)}
@@ -305,7 +306,7 @@ export default function TasksClient({
                       <tr
                         key={task.id}
                         className={`hover:bg-gray-50 transition ${
-                          task.status === 'COMPLETED' ? 'bg-gray-50' : ''
+                          task.status === 'DONE' ? 'bg-gray-50' : ''
                         }`}
                       >
                         <td className="px-6 py-4">
@@ -317,7 +318,7 @@ export default function TasksClient({
                           <div className="flex flex-col">
                             <p
                               className={`font-medium ${
-                                task.status === 'COMPLETED'
+                                task.status === 'DONE'
                                   ? 'line-through text-gray-500'
                                   : 'text-gray-900'
                               }`}
@@ -343,7 +344,7 @@ export default function TasksClient({
                               <AlertCircle className="w-4 h-4 text-red-600" />
                             )}
                             <span className={`text-sm ${isOverdue(task) ? 'text-red-600 font-semibold' : 'text-gray-600'}`} suppressHydrationWarning>
-                              {format(new Date(task.dueDate), 'MMM d, h:mm a')}
+                              {task.dueDate ? format(new Date(task.dueDate), 'MMM d, h:mm a') : 'No due date'}
                             </span>
                           </div>
                         </td>
@@ -354,7 +355,7 @@ export default function TasksClient({
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-2">
-                            {task.status !== 'COMPLETED' && (
+                            {task.status !== 'DONE' && (
                               <button
                                 onClick={() => handleCompleteTask(task.id)}
                                 disabled={loading}
@@ -363,11 +364,12 @@ export default function TasksClient({
                                 Done
                               </button>
                             )}
-                            {task.status === 'TODO' && (
+                            {(currentUser.role === 'OWNER' || currentUser.role === 'ADMIN' || task.createdById === currentUser.id) && (
                               <button
                                 onClick={() => handleDeleteTask(task.id)}
                                 disabled={loading}
                                 className="text-red-600 hover:text-red-700 transition disabled:opacity-50"
+                                title="Delete task"
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
@@ -477,7 +479,7 @@ export default function TasksClient({
                       </div>
                       <div className="text-right">
                         <p className="text-lg font-bold text-gray-900" suppressHydrationWarning>
-                          {formatCurrency(invoice.total)}
+                          {formatCurrency(invoice.amount)}
                         </p>
                         <p className="text-xs text-gray-500 mt-1" suppressHydrationWarning>
                           {invoice.dueDate 
@@ -535,6 +537,21 @@ export default function TasksClient({
               </div>
             )}
           </>
+        )}
+
+        {/* Task Create Modal */}
+        {showCreateTaskModal && (
+          <TaskCreateModal
+            onClose={() => setShowCreateTaskModal(false)}
+            onSuccess={() => {
+              setShowCreateTaskModal(false);
+              // Refresh tasks
+              fetch('/api/tasks')
+                .then(res => res.json())
+                .then(({ tasks }) => setTasks(tasks || []))
+                .catch(console.error);
+            }}
+          />
         )}
       </div>
     </div>

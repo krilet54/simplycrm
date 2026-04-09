@@ -6,6 +6,8 @@ import { format } from 'date-fns';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
+import { Download } from 'lucide-react';
+import { downloadInvoicePDF } from '@/lib/invoice-pdf';
 
 interface InvoiceItem {
   id: string;
@@ -60,7 +62,7 @@ export default function InvoicesClient({
   // Filter invoices
   const filteredInvoices = initialInvoices.filter(invoice => {
     // Status filter
-    if (filter === 'outstanding' && invoice.status !== 'SENT' && invoice.status !== 'OVERDUE') return false;
+    if (filter === 'outstanding' && invoice.status !== 'DRAFT' && invoice.status !== 'SENT' && invoice.status !== 'OVERDUE') return false;
     if (filter === 'paid' && invoice.status !== 'PAID') return false;
     if (filter === 'overdue' && invoice.status !== 'OVERDUE') return false;
     if (filter === 'draft' && invoice.status !== 'DRAFT') return false;
@@ -87,11 +89,28 @@ export default function InvoicesClient({
   };
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-NG', {
+    return new Intl.NumberFormat('en-IN', {
       style: 'currency',
-      currency: 'NGN',
+      currency: 'INR',
       minimumFractionDigits: 0,
     }).format(amount);
+  };
+
+  const handleMarkAsReceived = async (invoiceId: string) => {
+    try {
+      const res = await fetch(`/api/invoices/${invoiceId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'RECEIVED' }),
+      });
+
+      if (!res.ok) throw new Error('Failed to update invoice');
+      
+      toast.success('Invoice marked as received');
+      router.refresh();
+    } catch (err) {
+      toast.error('Failed to update invoice');
+    }
   };
 
   const handleMarkAsPaid = async (invoiceId: string) => {
@@ -108,6 +127,16 @@ export default function InvoicesClient({
       router.refresh();
     } catch (err) {
       toast.error('Failed to update invoice');
+    }
+  };
+
+  const handleDownload = async (invoiceId: string, invoiceNumber: string) => {
+    try {
+      await downloadInvoicePDF(invoiceId, invoiceNumber);
+      toast.success('Invoice downloaded successfully!');
+    } catch (err) {
+      toast.error('Failed to download invoice');
+      console.error(err);
     }
   };
 
@@ -274,7 +303,18 @@ export default function InvoicesClient({
                   >
                     View Contact
                   </Link>
-                  {(invoice.status === 'SENT' || invoice.status === 'OVERDUE') && (
+                  {invoice.status === 'SENT' && (
+                    <>
+                      <span className="text-gray-300">|</span>
+                      <button
+                        onClick={() => handleMarkAsReceived(invoice.id)}
+                        className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                      >
+                        Mark as Received
+                      </button>
+                    </>
+                  )}
+                  {(invoice.status === 'SENT' || invoice.status === 'RECEIVED' || invoice.status === 'OVERDUE') && (
                     <>
                       <span className="text-gray-300">|</span>
                       <button
@@ -287,13 +327,11 @@ export default function InvoicesClient({
                   )}
                   <span className="text-gray-300">|</span>
                   <button
-                    onClick={() => {
-                      const printUrl = `/api/invoices/${invoice.id}?format=pdf`;
-                      window.open(printUrl, '_blank');
-                    }}
-                    className="text-sm text-gray-600 hover:text-gray-700 font-medium"
+                    onClick={() => handleDownload(invoice.id, invoice.invoiceNumber)}
+                    className="text-sm text-gray-600 hover:text-gray-700 font-medium inline-flex items-center gap-1"
                   >
-                    Download PDF
+                    <Download className="w-3 h-3" />
+                    Download
                   </button>
                 </div>
               </div>

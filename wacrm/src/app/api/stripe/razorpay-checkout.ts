@@ -1,0 +1,67 @@
+// Temporarily placed here - should be moved to src/app/api/razorpay/checkout/route.ts
+// This is a workaround for Windows PowerShell directory creation limitations
+
+import { NextRequest, NextResponse } from 'next/server';
+import { createSupabaseServerClient } from '@/lib/supabase-server';
+import { db } from '@/lib/db';
+import { z } from 'zod';
+import { createRazorpayOrder, RAZORPAY_PLANS } from '@/lib/razorpay';
+
+const schema = z.object({
+  plan: z.enum(['STARTER', 'PRO']),
+});
+
+export async function POST(req: NextRequest) {
+  try {
+    const supabase = createSupabaseServerClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const dbUser = await db.user.findUnique({
+      where: { supabaseId: user.id },
+      include: { workspace: true },
+    });
+
+    if (!dbUser || !dbUser.workspace) {
+      return NextResponse.json({ error: 'No workspace found' }, { status: 400 });
+    }
+
+    const parsed = schema.safeParse(await req.json());
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    }
+
+    const planData = RAZORPAY_PLANS[parsed.data.plan];
+
+    // Create Razorpay order
+    const order = await createRazorpayOrder(
+      dbUser.workspace.id,
+      dbUser.id,
+      dbUser.email,
+      dbUser.name || 'User',
+      parsed.data.plan
+    );
+
+    return NextResponse.json({
+      orderId: order.id,
+      key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+      amount: planData.amount,
+      currency: 'INR',
+      description: planData.description,
+      prefill: {
+        name: dbUser.name || '',
+        email: dbUser.email || '',
+        contact: dbUser.phoneNumber || undefined,
+      },
+    });
+  } catch (error) {
+    console.error('Razorpay checkout error:', error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Checkout failed' },
+      { status: 500 }
+    );
+  }
+}

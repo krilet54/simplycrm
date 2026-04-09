@@ -22,13 +22,13 @@ export async function GET(req: NextRequest) {
     const tasks = await db.task.findMany({
       where: {
         workspaceId: dbUser.workspaceId,
-        status: { in: ['TODO', 'IN_PROGRESS', 'SNOOZED'] },
+        status: { in: ['TODO', 'IN_PROGRESS'] },
         dueDate: { gte: now, lte: upcomingDate },
         reminderSent: false,
       },
       include: {
         contact: { select: { id: true, name: true, phoneNumber: true } },
-        creator: { select: { id: true, name: true } },
+        createdBy: { select: { id: true, name: true } },
       },
       orderBy: { dueDate: 'asc' },
     });

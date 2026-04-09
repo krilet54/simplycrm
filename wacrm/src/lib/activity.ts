@@ -5,36 +5,30 @@ import { ActivityType } from '@prisma/client';
 export interface LogActivityParams {
   workspaceId: string;
   contactId: string;
-  activityType: ActivityType;
-  actorId: string;
-  title: string;
-  description?: string | null;
-  metadata?: Record<string, any> | null;
+  type: ActivityType;
+  authorId: string;
+  content: string;
 }
 
 /**
  * Log an activity for a contact
- * Called whenever something happens to a contact (message, invoice, note, etc.)
+ * Called whenever something happens to a contact (call, meeting, email, note, etc.)
  */
 export async function logActivity({
   workspaceId,
   contactId,
-  activityType,
-  actorId,
-  title,
-  description,
-  metadata,
+  type,
+  authorId,
+  content,
 }: LogActivityParams) {
   try {
     await db.activity.create({
       data: {
         workspaceId,
         contactId,
-        activityType,
-        actorId,
-        title,
-        description,
-        metadata: metadata || ({} as any),
+        type,
+        authorId,
+        content,
       },
     });
   } catch (error) {
@@ -52,7 +46,7 @@ export async function getRecentActivities(workspaceId: string, limit: number = 1
     where: { workspaceId },
     include: {
       contact: true,
-      actor: {
+      author: {
         select: { id: true, name: true, avatarUrl: true },
       },
     },
@@ -73,7 +67,7 @@ export async function getContactActivities(
   return db.activity.findMany({
     where: { contactId, workspaceId },
     include: {
-      actor: {
+      author: {
         select: { id: true, name: true, avatarUrl: true },
       },
     },
@@ -89,30 +83,29 @@ export async function getContactActivities(
 export async function getActivityStats(contactId: string, workspaceId: string) {
   const activities = await db.activity.findMany({
     where: { contactId, workspaceId },
-    select: { activityType: true },
+    select: { type: true },
   });
 
   const stats = {
-    messages: 0,
+    calls: 0,
+    meetings: 0,
+    emails: 0,
     notes: 0,
     invoices: 0,
-    stageChanges: 0,
     total: activities.length,
   };
 
   for (const activity of activities) {
-    if (activity.activityType === 'MESSAGE_SENT' || activity.activityType === 'MESSAGE_RECEIVED') {
-      stats.messages++;
-    } else if (activity.activityType === 'NOTE_ADDED') {
+    if (activity.type === 'CALL') {
+      stats.calls++;
+    } else if (activity.type === 'MEETING') {
+      stats.meetings++;
+    } else if (activity.type === 'EMAIL') {
+      stats.emails++;
+    } else if (activity.type === 'NOTE') {
       stats.notes++;
-    } else if (
-      activity.activityType === 'INVOICE_CREATED' ||
-      activity.activityType === 'INVOICE_SENT' ||
-      activity.activityType === 'INVOICE_PAID'
-    ) {
+    } else if (activity.type === 'INVOICE_SENT') {
       stats.invoices++;
-    } else if (activity.activityType === 'STAGE_CHANGED') {
-      stats.stageChanges++;
     }
   }
 

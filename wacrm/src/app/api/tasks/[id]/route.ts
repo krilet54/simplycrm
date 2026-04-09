@@ -2,16 +2,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
-import { logActivity } from '@/lib/activity';
 import { z } from 'zod';
 
 const updateTaskSchema = z.object({
-  title: z.string().min(3).max(200).optional(),
-  description: z.string().optional(),
+  title: z.string().min(1).max(200).optional(),
+  description: z.string().max(1000).optional(),
   dueDate: z.string().datetime().optional(),
-  status: z.enum(['TODO', 'IN_PROGRESS', 'COMPLETED', 'SNOOZED']).optional(),
+  status: z.enum(['TODO', 'IN_PROGRESS', 'DONE']).optional(),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH']).optional(),
-  snoozedUntil: z.string().datetime().optional(),
+  assignedToId: z.string().uuid().optional(),
 });
 
 export async function PATCH(
@@ -38,37 +37,45 @@ export async function PATCH(
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { title, description, dueDate, status, priority, snoozedUntil } = parsed.data;
+  const { title, description, dueDate, status, priority, assignedToId } = parsed.data;
 
   try {
+    // Verify assignedToId belongs to workspace if provided
+    if (assignedToId) {
+      const assignedUser = await db.user.findFirst({
+        where: { id: assignedToId, workspaceId: dbUser.workspaceId },
+      });
+      if (!assignedUser) {
+        return NextResponse.json({ error: 'User not found' }, { status: 404 });
+      }
+    }
+
+    const updateData: any = {};
+    
+    if (title !== undefined) updateData.title = title;
+    if (description !== undefined) updateData.description = description;
+    if (dueDate !== undefined) updateData.dueDate = new Date(dueDate);
+    if (status !== undefined) updateData.status = status;
+    if (priority !== undefined) updateData.priority = priority;
+    if (assignedToId !== undefined) updateData.assignedToId = assignedToId;
+
+    // Handle completedAt based on status
+    if (status === 'DONE') {
+      updateData.completedAt = new Date();
+    } else if (status && task.completedAt) {
+      // If moving away from DONE to TODO or IN_PROGRESS, clear completedAt
+      updateData.completedAt = null;
+    }
+
     const updated = await db.task.update({
       where: { id: params.id },
-      data: {
-        ...(title && { title }),
-        ...(description !== undefined && { description }),
-        ...(dueDate && { dueDate: new Date(dueDate) }),
-        ...(status && { status }),
-        ...(priority && { priority }),
-        ...(snoozedUntil && { snoozedUntil: new Date(snoozedUntil) }),
-        ...(status === 'COMPLETED' ? { completedAt: new Date() } : {}),
-      },
+      data: updateData,
       include: {
         contact: { select: { id: true, name: true, phoneNumber: true } },
-        creator: { select: { id: true, name: true } },
+        createdBy: { select: { id: true, name: true } },
+        assignedTo: { select: { id: true, name: true, avatarUrl: true } },
       },
     });
-
-    if (status && status !== task.status) {
-      await logActivity({
-        workspaceId: dbUser.workspaceId,
-        contactId: task.contactId,
-        activityType: 'CONTACT_UPDATED',
-        actorId: dbUser.id,
-        title: `Task ${status === 'COMPLETED' ? 'completed' : 'updated'}: ${task.title}`,
-        description: `Status: ${status}`,
-        metadata: { taskId: task.id },
-      });
-    }
 
     return NextResponse.json({ task: updated });
   } catch (error) {
@@ -95,10 +102,16 @@ export async function DELETE(
     return NextResponse.json({ error: 'Task not found' }, { status: 404 });
   }
 
-  if (task.status !== 'TODO') {
+  // Only createdBy or Admin/Owner can delete
+  const canDelete = 
+    task.createdById === dbUser.id || 
+    dbUser.role === 'OWNER' || 
+    dbUser.role === 'ADMIN';
+  
+  if (!canDelete) {
     return NextResponse.json(
-      { error: 'Can only delete TODO tasks' },
-      { status: 400 }
+      { error: 'Unauthorized to delete task' },
+      { status: 403 }
     );
   }
 

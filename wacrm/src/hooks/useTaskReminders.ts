@@ -25,17 +25,21 @@ export function useTaskReminders() {
         });
 
         if (urgentTasks.length > 0) {
+          // Send email reminders via API
+          try {
+            await fetch('/api/tasks/send-reminder', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                taskIds: urgentTasks.map((task: any) => task.id),
+              }),
+            });
+          } catch (emailError) {
+            console.error('Failed to send email reminders:', emailError);
+          }
+
           // Show desktop notification
           showNotification(urgentTasks);
-
-          // Mark reminders as sent
-          for (const task of urgentTasks) {
-            await fetch(`/api/tasks/${task.id}`, {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ reminderSent: true }),
-            });
-          }
         }
       } catch (error) {
         console.error('Task reminder check failed:', error);

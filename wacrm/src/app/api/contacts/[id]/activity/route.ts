@@ -31,7 +31,7 @@ export async function GET(
       workspaceId: dbUser.workspaceId,
     },
     include: {
-      actor: {
+      author: {
         select: { id: true, name: true, avatarUrl: true },
       },
     },

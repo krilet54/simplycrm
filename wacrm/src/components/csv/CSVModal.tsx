@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import toast from 'react-hot-toast';
-import { X, Download, Upload } from 'lucide-react';
+import { X, Download, Upload, FileText } from 'lucide-react';
 
 interface CSVModalProps {
   onClose: () => void;
@@ -10,10 +10,35 @@ interface CSVModalProps {
 }
 
 export default function CSVModal({ onClose, onImportSuccess }: CSVModalProps) {
-  const [mode, setMode] = useState<'import' | 'export'>('import');
+  const [mode, setMode] = useState<'import' | 'export' | 'template'>('import');
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<any>(null);
+
+  const downloadTemplate = () => {
+    const headers = ['name', 'phoneNumber', 'email', 'source', 'interest', 'estimatedValue'];
+    const dummyData = [
+      ['John Doe', '+91 98765 43210', 'john@example.com', 'Website', 'High', '50000'],
+      ['Jane Smith', '+91 87654 32109', 'jane@example.com', 'Referral', 'Medium', '30000'],
+      ['Mike Johnson', '+91 76543 21098', 'mike@example.com', 'Call', 'Low', '10000'],
+    ];
+
+    const csvContent = [
+      headers.join(','),
+      ...dummyData.map(row => row.map(cell => `"${cell}"`).join(',')),
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'contacts-template.csv';
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+    toast.success('Template downloaded');
+  };
 
   async function handleImport() {
     if (!file) {
@@ -86,7 +111,7 @@ export default function CSVModal({ onClose, onImportSuccess }: CSVModalProps) {
         <div className="flex gap-2 p-6 border-b border-gray-200 bg-gray-50">
           <button
             onClick={() => { setMode('import'); setResults(null); setFile(null); }}
-            className={`flex-1 py-2 px-3 rounded-lg font-medium transition ${
+            className={`flex-1 py-2 px-3 rounded-lg font-medium transition text-sm ${
               mode === 'import'
                 ? 'bg-forest-500 text-white'
                 : 'bg-white border border-gray-200 text-gray-700'
@@ -96,8 +121,19 @@ export default function CSVModal({ onClose, onImportSuccess }: CSVModalProps) {
             Import
           </button>
           <button
+            onClick={() => { setMode('template'); setResults(null); }}
+            className={`flex-1 py-2 px-3 rounded-lg font-medium transition text-sm ${
+              mode === 'template'
+                ? 'bg-forest-500 text-white'
+                : 'bg-white border border-gray-200 text-gray-700'
+            }`}
+          >
+            <FileText size={16} className="inline mr-2" />
+            Template
+          </button>
+          <button
             onClick={() => { setMode('export'); setResults(null); }}
-            className={`flex-1 py-2 px-3 rounded-lg font-medium transition ${
+            className={`flex-1 py-2 px-3 rounded-lg font-medium transition text-sm ${
               mode === 'export'
                 ? 'bg-forest-500 text-white'
                 : 'bg-white border border-gray-200 text-gray-700'
@@ -170,6 +206,28 @@ export default function CSVModal({ onClose, onImportSuccess }: CSVModalProps) {
                 </>
               )}
             </>
+          ) : mode === 'template' ? (
+            <>
+              <p className="text-gray-700 mb-4">
+                Download a CSV template to understand the format and fill in your contact details.
+              </p>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-2">
+                <p className="text-sm text-blue-800 font-medium">Template includes:</p>
+                <ul className="text-sm text-blue-700 space-y-1 ml-4">
+                  <li>• <strong>name</strong> - Contact name</li>
+                  <li>• <strong>phoneNumber</strong> - Phone number (required)</li>
+                  <li>• <strong>email</strong> - Email address</li>
+                  <li>• <strong>source</strong> - How contact was acquired</li>
+                  <li>• <strong>interest</strong> - Interest level (High/Medium/Low)</li>
+                  <li>• <strong>estimatedValue</strong> - Estimated business value</li>
+                </ul>
+              </div>
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                <p className="text-sm text-green-800">
+                  💡 The template includes 3 sample contacts. You can delete them and add your own data.
+                </p>
+              </div>
+            </>
           ) : (
             <>
               <p className="text-gray-700">
@@ -190,11 +248,11 @@ export default function CSVModal({ onClose, onImportSuccess }: CSVModalProps) {
             Cancel
           </button>
           <button
-            onClick={mode === 'import' ? handleImport : handleExport}
+            onClick={mode === 'import' ? handleImport : mode === 'template' ? downloadTemplate : handleExport}
             disabled={loading || (mode === 'import' && !file && !results)}
             className="btn-primary flex-1 justify-center"
           >
-            {loading ? 'Processing...' : mode === 'import' ? 'Import' : 'Download'}
+            {loading ? 'Processing...' : mode === 'import' ? 'Import' : mode === 'template' ? 'Download Template' : 'Download'}
           </button>
         </div>
       </div>

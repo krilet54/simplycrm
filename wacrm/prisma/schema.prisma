@@ -12,8 +12,6 @@ datasource db {
 model Workspace {
   id                    String   @id @default(uuid())
   businessName          String
-  whatsappPhoneNumberId String?  // Meta Phone Number ID
-  whatsappAccessToken   String?  // Long-lived token (encrypt in prod)
   stripeCustomerId      String?
   stripePriceId         String?
   stripeSubscriptionId  String?
@@ -21,9 +19,23 @@ model Workspace {
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
+  // Trial system
+  trialEndsAt           DateTime?  // Set on workspace creation (now + 14 days)
+  trialExpired          Boolean    @default(false)
+
+  // Onboarding
+  onboardingCompleted   Boolean  @default(false)
+
+  // Invoice branding
+  invoiceLogo           String?  // URL to logo image
+  invoicePrimaryColor   String?  @default("#22c55e") // Primary color for invoices
+  invoiceFooterText     String?  // Custom footer text for invoices
+  invoiceBusinessAddress String? // Business address shown on invoices
+  invoiceBusinessPhone  String?  // Business phone shown on invoices
+  invoiceBusinessEmail  String?  // Business email shown on invoices
+
   users         User[]
   contacts      Contact[]
-  messages      Message[]
   quickReplies  QuickReply[]
   kanbanStages  KanbanStage[]
   tags          Tag[]
@@ -31,7 +43,11 @@ model Workspace {
   metaOAuthToken MetaOAuthToken?
   activities    Activity[]
   tasks         Task[]
+  followUps     FollowUp[]
   emails        Email[]
+  recurringInvoices RecurringInvoice[]
+  invites       Invite[]
+  notifications Notification[]
 
   @@map("workspaces")
 }
@@ -59,17 +75,23 @@ model User {
   supabaseId  String   @unique // Supabase Auth user ID
   name        String
   email       String
+  phoneNumber String?  // Agent's phone number (added during onboarding)
   role        AgentRole @default(AGENT)
   avatarUrl   String?
   isOnline    Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  workspace   Workspace @relation(fields: [workspaceId], references: [id])
-  messages    Message[] @relation("SentMessages")
-  notes       Note[]
-  activities  Activity[]  // Activities created by this user
-  tasksCreated Task[] @relation("CreatedTasks")
+  workspace              Workspace @relation(fields: [workspaceId], references: [id])
+  notes                  Note[]
+  activities             Activity[]  // Activities created by this user
+  createdTasks           Task[] @relation("CreatedTasks")
+  assignedTasks          Task[] @relation("AssignedTasks")
+  followUps              FollowUp[]
+  assignedContacts       Contact[] @relation("AssignedContacts")  // Contacts assigned to this user
+  assignedByContacts     Contact[] @relation("AssignedByContacts")  // Contacts this user assigned
+  createdContacts        Contact[] @relation("CreatedContacts")  // Contacts this user added
+  notifications          Notification[]  // Notifications for this user
 
   @@map("users")
 }
@@ -80,84 +102,104 @@ enum AgentRole {
   AGENT
 }
 
+// ─── Assignment Status ────────────────────────────────────────────────────────
+enum AssignmentStatus {
+  ACTIVE
+  COMPLETED
+}
+
+// ─── Confidence/Intent Levels ─────────────────────────────────────────────────
+enum ConfidenceLevel {
+  HIGH_INTENT          // Ready to buy
+  EXPLORATORY          // Just looking/early stage
+  NEGOTIATING          // In active discussion
+  DEMO_SCHEDULED       // Demo booked
+}
+
 // ─── Contacts ────────────────────────────────────────────────────────────────
 model Contact {
-  id             String        @id @default(uuid())
+  id             String            @id @default(uuid())
   workspaceId    String
   phoneNumber    String
   name           String?
   email          String?
   avatarUrl      String?
   kanbanStageId  String?
-  isBlocked      Boolean       @default(false)
-  source         ContactSource @default(WHATSAPP)
+  isBlocked      Boolean           @default(false)
+  source         ContactSource     @default(WHATSAPP)
   sourceNote     String?
   interest       String?
   estimatedValue Float?
-  lastMessageAt  DateTime?
-  deletedAt      DateTime?     // Soft-delete
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  confidenceLevel ConfidenceLevel?  // Manually set - shows intent badge on Kanban
+  lastActivityAt DateTime?
+  
+  // ─── Delegation ───────────────────────────────────────────────────────────
+  assignedToId   String?           // Current assignee (agent/admin)
+  assignedById   String?           // Who assigned it (owner/admin)
+  delegationNote String?           // Note contextualizing the work
+  assignmentStatus AssignmentStatus? @default(ACTIVE)
+  assignedAt     DateTime?
+  completedAt    DateTime?
+
+  // ─── Tracking ─────────────────────────────────────────────────────────────
+  createdById    String?           // Who added/created the contact
+  
+  deletedAt      DateTime?         // Soft-delete
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
 
   workspace    Workspace    @relation(fields: [workspaceId], references: [id])
   kanbanStage  KanbanStage? @relation(fields: [kanbanStageId], references: [id])
-  messages     Message[]
+  assignedTo   User?        @relation("AssignedContacts", fields: [assignedToId], references: [id])
+  assignedBy   User?        @relation("AssignedByContacts", fields: [assignedById], references: [id])
+  createdBy    User?        @relation("CreatedContacts", fields: [createdById], references: [id])
   notes        Note[]
   contactTags  ContactTag[]
   invoices     Invoice[]
   activities   Activity[]
   tasks        Task[]
+  followUps    FollowUp[]
   emails       Email[]
+  recurringInvoices RecurringInvoice[]
 
   @@unique([workspaceId, phoneNumber])
+  @@index([workspaceId])
+  @@index([workspaceId, createdAt])
+  @@index([workspaceId, lastActivityAt])
+  @@index([workspaceId, assignedToId])
+  @@index([workspaceId, assignedToId, assignmentStatus])
   @@map("contacts")
 }
 
-// ─── Messages ────────────────────────────────────────────────────────────────
-model Message {
-  id            String      @id @default(uuid())
-  workspaceId   String
-  contactId     String
-  agentId       String?
-  wamid         String?     @unique // WhatsApp message ID from Meta
-  senderType    SenderType
-  type          MessageType @default(TEXT)
-  content       String
-  mediaUrl      String?
-  status        MessageStatus @default(SENT)
-  isRead        Boolean     @default(false)
-  timestamp     DateTime    @default(now())
+// ─── Activity Timeline ─────────────────────────────────────────────────────────
+enum ActivityType {
+  NOTE
+  CALL
+  MEETING
+  EMAIL
+  WHATSAPP
+  INVOICE_SENT
+  STAGE_CHANGE
+  CONTACT_ADDED
+  OTHER
+}
 
-  workspace  Workspace @relation(fields: [workspaceId], references: [id])
-  contact    Contact   @relation(fields: [contactId], references: [id])
-  agent      User?     @relation("SentMessages", fields: [agentId], references: [id])
+model Activity {
+  id          String       @id @default(uuid())
+  workspaceId String
+  contactId   String
+  authorId    String?      // which agent logged this
+  type        ActivityType
+  content     String       // what was discussed/happened
+  timestamp   DateTime     @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+  contact   Contact   @relation(fields: [contactId], references: [id])
+  author    User?     @relation(fields: [authorId], references: [id])
 
   @@index([contactId, timestamp])
   @@index([workspaceId, timestamp])
-  @@map("messages")
-}
-
-enum SenderType {
-  AGENT
-  CUSTOMER
-  SYSTEM
-}
-
-enum MessageType {
-  TEXT
-  IMAGE
-  AUDIO
-  VIDEO
-  DOCUMENT
-  TEMPLATE
-}
-
-enum MessageStatus {
-  SENDING
-  SENT
-  DELIVERED
-  READ
-  FAILED
+  @@map("activities")
 }
 
 // ─── Notes (private, not sent to customer) ───────────────────────────────────
@@ -233,6 +275,7 @@ model QuickReply {
 enum InvoiceStatus {
   DRAFT
   SENT
+  RECEIVED
   PAID
   OVERDUE
   CANCELLED
@@ -249,6 +292,7 @@ model Invoice {
   dueDate       DateTime?
   sentAt        DateTime?
   paidAt        DateTime?
+  notes         String?         // Additional notes for the invoice
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 
@@ -277,6 +321,51 @@ model InvoiceItem {
   @@map("invoice_items")
 }
 
+// ─── Recurring Invoices ───────────────────────────────────────────────────────
+enum RecurringFrequency {
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+model RecurringInvoice {
+  id              String             @id @default(uuid())
+  workspaceId     String
+  contactId       String
+  title           String             // e.g. "Monthly Cleaning Service"
+  frequency       RecurringFrequency @default(MONTHLY)
+  amount          Float              // Fixed amount per occurrence
+  isActive        Boolean            @default(true)
+  nextInvoiceDate DateTime           // When the next invoice should be generated
+  lastInvoiceDate DateTime?          // When the last invoice was generated
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  workspace       Workspace          @relation(fields: [workspaceId], references: [id])
+  contact         Contact            @relation(fields: [contactId], references: [id])
+  items           RecurringInvoiceItem[]
+
+  @@index([workspaceId])
+  @@index([contactId])
+  @@index([isActive, nextInvoiceDate])
+  @@map("recurring_invoices")
+}
+
+model RecurringInvoiceItem {
+  id                 String           @id @default(uuid())
+  recurringInvoiceId String
+  description        String
+  quantity           Float
+  unitPrice          Float
+
+  recurringInvoice   RecurringInvoice @relation(fields: [recurringInvoiceId], references: [id], onDelete: Cascade)
+
+  @@index([recurringInvoiceId])
+  @@map("recurring_invoice_items")
+}
+
 // ─── Meta OAuth Tokens ────────────────────────────────────────────────────────
 model MetaOAuthToken {
   id                String   @id @default(uuid())
@@ -294,51 +383,11 @@ model MetaOAuthToken {
   @@map("meta_oauth_tokens")
 }
 
-// ─── Activity Timeline ─────────────────────────────────────────────────────────
-enum ActivityType {
-  CONTACT_CREATED
-  CONTACT_UPDATED
-  MESSAGE_SENT
-  MESSAGE_RECEIVED
-  NOTE_ADDED
-  INVOICE_CREATED
-  INVOICE_SENT
-  INVOICE_PAID
-  STAGE_CHANGED
-  TAG_ADDED
-  TAG_REMOVED
-  EMAIL_SENT
-  CALL_LOGGED
-}
-
-model Activity {
-  id            String       @id @default(uuid())
-  workspaceId   String
-  contactId     String
-  activityType  ActivityType
-  actorId       String       // User who triggered this activity
-  title         String       // e.g., "Invoice #INV-001 sent"
-  description   String?      // Optional details
-  metadata      Json?        // Flexible storage: { messageId, invoiceId, oldStage, newStage, etc }
-  timestamp     DateTime     @default(now())
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
-
-  workspace Workspace @relation(fields: [workspaceId], references: [id])
-  contact   Contact   @relation(fields: [contactId], references: [id])
-  actor     User      @relation(fields: [actorId], references: [id])
-
-  @@index([contactId, timestamp])
-  @@index([workspaceId, timestamp])
-  @@map("activities")
-}
-
 // ─── Tasks & Reminders ────────────────────────────────────────────────────────
 enum TaskStatus {
   TODO
   IN_PROGRESS
-  COMPLETED
-  SNOOZED
+  DONE
 }
 
 enum TaskPriority {
@@ -358,11 +407,12 @@ enum TaskType {
 model Task {
   id            String       @id @default(uuid())
   workspaceId   String
-  contactId     String
-  createdBy     String       // User who created this task
+  contactId     String?
+  createdById   String       // User who created this task
+  assignedToId  String?      // Which agent it's assigned to
   title         String
   description   String?
-  dueDate       DateTime
+  dueDate       DateTime?
   status        TaskStatus   @default(TODO)
   priority      TaskPriority @default(MEDIUM)
   type          TaskType     @default(MANUAL)
@@ -373,12 +423,39 @@ model Task {
   updatedAt     DateTime     @updatedAt
 
   workspace Workspace @relation(fields: [workspaceId], references: [id])
-  contact   Contact   @relation(fields: [contactId], references: [id])
-  creator   User      @relation("CreatedTasks", fields: [createdBy], references: [id])
+  contact   Contact?  @relation(fields: [contactId], references: [id])
+  createdBy User      @relation("CreatedTasks", fields: [createdById], references: [id])
+  assignedTo User?    @relation("AssignedTasks", fields: [assignedToId], references: [id])
 
+  @@index([workspaceId])
+  @@index([workspaceId, status])
   @@index([workspaceId, status, dueDate])
   @@index([contactId])
+  @@index([assignedToId])
   @@map("tasks")
+}
+
+// ─── Follow-Ups ───────────────────────────────────────────────────────────────
+model FollowUp {
+  id          String   @id @default(uuid())
+  workspaceId String
+  contactId   String
+  createdById String
+  note        String?  // what to follow up about
+  dueDate     DateTime
+  isDone      Boolean  @default(false)
+  doneAt      DateTime?
+  createdAt   DateTime @default(now())
+
+  workspace  Workspace @relation(fields: [workspaceId], references: [id])
+  contact    Contact   @relation(fields: [contactId], references: [id])
+  createdBy  User      @relation(fields: [createdById], references: [id])
+
+  @@index([workspaceId])
+  @@index([workspaceId, isDone])
+  @@index([workspaceId, dueDate])
+  @@index([contactId])
+  @@map("follow_ups")
 }
 
 // ─── Email Communication ──────────────────────────────────────────────────────
@@ -411,6 +488,57 @@ model Email {
   @@map("emails")
 }
 
+// ─── Notifications ────────────────────────────────────────────────────────────
+enum NotificationType {
+  CONTACT_ASSIGNED
+  TASK_ASSIGNED
+  FOLLOWUP_ASSIGNED
+  FOLLOWUP_DUE
+  TASK_DUE
+  CONTACT_CREATED
+}
+
+model Notification {
+  id            String           @id @default(uuid())
+  workspaceId   String
+  userId        String           // Recipient of notification
+  type          NotificationType
+  title         String
+  message       String
+  relatedId     String?          // ID of contact/task/followup
+  relatedType   String?          // "CONTACT", "TASK", "FOLLOWUP"
+  isRead        Boolean          @default(false)
+  readAt        DateTime?
+  createdAt     DateTime         @default(now())
+  
+  workspace     Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([workspaceId, userId, isRead])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
 // ─── User Relations Extensions ────────────────────────────────────────────────
 // User model extended to include activities and tasks they created
 // (already defined above, just adding to User relations)
+
+// ─── Team Invitations ──────────────────────────────────────────────────────────
+model Invite {
+  id            String   @id @default(cuid())
+  workspaceId   String
+  email         String
+  role          String   @default("AGENT")
+  status        String   @default("PENDING")  // PENDING, ACCEPTED, EXPIRED
+  expiresAt     DateTime
+  acceptedAt    DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([email])
+  @@index([status])
+  @@map("invites")
+}

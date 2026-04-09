@@ -127,12 +127,12 @@ export async function mergeContacts(
 ) {
   const keepContact = await db.contact.findFirst({
     where: { id: keepId, workspaceId },
-    include: { messages: true, invoices: true },
+    include: { invoices: true },
   });
 
   const mergeContact = await db.contact.findFirst({
     where: { id: mergeId, workspaceId },
-    include: { messages: true, invoices: true },
+    include: { invoices: true },
   });
 
   if (!keepContact || !mergeContact) {
@@ -140,12 +140,6 @@ export async function mergeContacts(
   }
 
   try {
-    // Update all messages from merged contact to kept contact
-    await db.message.updateMany({
-      where: { contactId: mergeId },
-      data: { contactId: keepId },
-    });
-
     // Update all invoices from merged contact to kept contact
     await db.invoice.updateMany({
       where: { contactId: mergeId },
@@ -195,14 +189,9 @@ export async function mergeContacts(
     await logActivity({
       workspaceId,
       contactId: keepId,
-      activityType: 'CONTACT_UPDATED',
-      actorId: userId,
-      title: `Merged duplicate contact`,
-      description: `Merged: ${mergeContact.name || mergeContact.phoneNumber}`,
-      metadata: {
-        mergedFromId: mergeId,
-        action: 'duplicate_merge',
-      },
+      type: 'CONTACT_ADDED',
+      authorId: userId,
+      content: `Merged duplicate contact: ${mergeContact.name || mergeContact.phoneNumber}`,
     });
 
     return keepContact;

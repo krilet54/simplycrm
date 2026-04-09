@@ -2,7 +2,8 @@
 import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
 import { db } from '@/lib/db';
-import Sidebar from '@/components/shared/Sidebar';
+import DashboardLayoutClient from './DashboardLayoutClient';
+import { getTrialStatus } from '@/lib/trial';
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const supabase = createSupabaseServerClient();
@@ -29,16 +30,16 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   if (!dbUser) redirect('/onboarding');
 
+  // Get trial status - workspace already includes trialEndsAt and stripeSubscriptionId from schema
+  const trialStatus = getTrialStatus({
+    trialEndsAt: dbUser.workspace.trialEndsAt ?? null,
+    plan: dbUser.workspace.plan,
+    stripeSubscriptionId: dbUser.workspace.stripeSubscriptionId ?? null,
+  });
+
   return (
-    <div className="flex h-screen overflow-hidden" style={{ background: 'var(--bg)' }}>
-      <Sidebar 
-        user={dbUser} 
-        workspace={dbUser.workspace} 
-        tags={dbUser.workspace.tags}
-      />
-      <main className="flex-1 overflow-hidden flex flex-col">
-        {children}
-      </main>
-    </div>
+    <DashboardLayoutClient user={dbUser} trialStatus={trialStatus}>
+      {children}
+    </DashboardLayoutClient>
   );
 }

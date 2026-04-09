@@ -6,7 +6,6 @@ import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import type { KanbanStageType, ContactType } from '@/types';
-import Link from 'next/link';
 
 interface StageWithContacts extends KanbanStageType {
   contacts: ContactType[];
@@ -14,11 +13,33 @@ interface StageWithContacts extends KanbanStageType {
 
 interface Props {
   stages: StageWithContacts[];
+  onContactSelect?: (contactId: string) => void;
 }
 
 // Helper functions for financial calculations
 function calculateStageTotal(contacts: ContactType[]): number {
   return contacts.reduce((sum, c) => sum + (c.estimatedValue || 0), 0);
+}
+
+function isContactOverdue(contact: ContactType): boolean {
+  if (!contact.lastActivityAt) return true;
+  
+  const lastActivity = new Date(contact.lastActivityAt);
+  const now = new Date();
+  const hoursSinceActivity = (now.getTime() - lastActivity.getTime()) / (1000 * 60 * 60);
+  
+  // 48 hours = 2 days
+  return hoursSinceActivity > 48;
+}
+
+function getOverdueTooltip(contact: ContactType): string {
+  if (!contact.lastActivityAt) return 'No activity logged';
+  
+  const lastActivity = new Date(contact.lastActivityAt);
+  const now = new Date();
+  const daysSinceActivity = Math.floor((now.getTime() - lastActivity.getTime()) / (1000 * 60 * 60 * 24));
+  
+  return `No activity in ${daysSinceActivity} day${daysSinceActivity > 1 ? 's' : ''}`;
 }
 
 function calculatePipelineStats(stages: StageWithContacts[]) {
@@ -41,7 +62,7 @@ function calculatePipelineStats(stages: StageWithContacts[]) {
   return { pipelineTotal, activeDeals, avgDeal };
 }
 
-export default function KanbanClient({ stages: initialStages }: Props) {
+export default function KanbanClient({ stages: initialStages, onContactSelect }: Props) {
   const router = useRouter();
   const [stages, setStages] = useState<StageWithContacts[]>(initialStages);
   const [dragging, setDragging] = useState<{ contactId: string; fromStageId: string } | null>(null);
@@ -183,7 +204,7 @@ export default function KanbanClient({ stages: initialStages }: Props) {
         <div className="px-6 py-3 bg-white border-b border-gray-100 flex items-center justify-start gap-8">
           <div>
             <div className="text-xs text-gray-500 font-medium">Total in pipeline</div>
-            <div className="text-lg font-bold text-gray-900" suppressHydrationWarning>₦{pipelineTotal.toLocaleString('en-US')}</div>
+            <div className="text-lg font-bold text-gray-900" suppressHydrationWarning>₹{pipelineTotal.toLocaleString('en-US')}</div>
           </div>
           <div className="w-px h-6 bg-gray-200" />
           <div>
@@ -193,7 +214,7 @@ export default function KanbanClient({ stages: initialStages }: Props) {
           <div className="w-px h-6 bg-gray-200" />
           <div>
             <div className="text-xs text-gray-500 font-medium">Avg deal</div>
-            <div className="text-lg font-bold text-gray-900" suppressHydrationWarning>₦{avgDeal.toLocaleString('en-US')}</div>
+            <div className="text-lg font-bold text-gray-900" suppressHydrationWarning>₹{avgDeal.toLocaleString('en-US')}</div>
           </div>
         </div>
       )}
@@ -239,7 +260,7 @@ export default function KanbanClient({ stages: initialStages }: Props) {
                 </div>
                 {calculateStageTotal(stage.contacts) > 0 && (
                   <div className="text-xs text-gray-500 pl-0" suppressHydrationWarning>
-                    ₦{calculateStageTotal(stage.contacts).toLocaleString('en-US')} in pipeline
+                    ₹{calculateStageTotal(stage.contacts).toLocaleString('en-US')} in pipeline
                   </div>
                 )}
               </div>
@@ -259,10 +280,37 @@ export default function KanbanClient({ stages: initialStages }: Props) {
                     onDragStart={() => onDragStart(contact.id, stage.id)}
                     className="kanban-card relative"
                   >
-                    {/* Estimated value badge - top right */}
-                    {contact.estimatedValue && (
-                      <div className="absolute -top-1 -right-1 bg-emerald-100 text-emerald-700 text-xs font-bold px-2 py-0.5 rounded-full shadow-sm" suppressHydrationWarning>
-                        ₦{contact.estimatedValue.toLocaleString('en-US')}
+                    {/* Intent badge - top left */}
+
+
+                    {/* Overdue indicator - top right */}
+                    {isContactOverdue(contact) && (
+                      <div className="absolute top-1 right-1 group" title={getOverdueTooltip(contact)}>
+                        <div className="w-2 h-2 rounded-full bg-red-500 shadow-sm cursor-help" />
+                      </div>
+                    )}
+
+                    {/* Estimated value badge - only if no overdue indicator */}
+                    {!isContactOverdue(contact) && contact.estimatedValue && (
+                      <div className="absolute top-1 right-1 bg-emerald-100 text-emerald-700 text-xs font-bold px-2 py-0.5 rounded-full shadow-sm" suppressHydrationWarning>
+                        ₹{contact.estimatedValue.toLocaleString('en-US')}
+                      </div>
+                    )}
+
+                    {/* Confidence/Intent level - confidence level if exists */}
+                    {contact.confidenceLevel && (
+                      <div className="absolute top-1 left-1">
+                        <div className={`text-xs font-bold px-2 py-0.5 rounded-full shadow-sm ${
+                          contact.confidenceLevel === 'HIGH_INTENT' ? 'bg-red-100 text-red-700' :
+                          contact.confidenceLevel === 'EXPLORATORY' ? 'bg-blue-100 text-blue-700' :
+                          contact.confidenceLevel === 'NEGOTIATING' ? 'bg-purple-100 text-purple-700' :
+                          'bg-green-100 text-green-700'
+                        }`}>
+                          {contact.confidenceLevel === 'HIGH_INTENT' ? '🔥' :
+                           contact.confidenceLevel === 'EXPLORATORY' ? '🔍' :
+                           contact.confidenceLevel === 'NEGOTIATING' ? '💬' :
+                           '📅'}
+                        </div>
                       </div>
                     )}
 
@@ -278,14 +326,10 @@ export default function KanbanClient({ stages: initialStages }: Props) {
                       </div>
                     </div>
 
-                    {/* Interest or message preview */}
+                    {/* Interest preview */}
                     {contact.interest ? (
                       <p className="text-xs text-gray-600 italic mt-2 line-clamp-1 leading-relaxed">
                         {contact.interest}
-                      </p>
-                    ) : contact.messages?.[0] ? (
-                      <p className="text-xs text-gray-500 mt-2 line-clamp-1 leading-relaxed">
-                        {(contact.messages[0] as any).content}
                       </p>
                     ) : null}
 
@@ -311,16 +355,16 @@ export default function KanbanClient({ stages: initialStages }: Props) {
 
                     <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-gray-50">
                       <span className="text-[11px] text-gray-400" suppressHydrationWarning>
-                        {contact.lastMessageAt
-                          ? format(new Date(contact.lastMessageAt), 'dd MMM')
+                        {contact.lastActivityAt
+                          ? format(new Date(contact.lastActivityAt), 'dd MMM')
                           : 'No messages'}
                       </span>
-                      <Link
-                        href="/dashboard/inbox"
+                      <button
+                        onClick={() => onContactSelect?.(contact.id)}
                         className="text-[11px] text-forest-600 font-medium hover:underline"
                       >
-                        Open chat →
-                      </Link>
+                        View profile →
+                      </button>
                     </div>
                   </div>
                 ))}

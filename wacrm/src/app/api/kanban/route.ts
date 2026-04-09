@@ -21,10 +21,10 @@ export async function GET() {
     orderBy: { position: 'asc' },
     include: {
       contacts: {
-        orderBy: { lastMessageAt: { sort: 'desc', nulls: 'last' } },
+        orderBy: { lastActivityAt: { sort: 'desc', nulls: 'last' } },
         include: {
           contactTags: { include: { tag: true } },
-          _count: { select: { messages: true } },
+          _count: { select: { activities: true } },
         },
       },
     },
@@ -99,6 +99,17 @@ export async function PATCH(req: NextRequest) {
   const updated = await db.contact.update({
     where: { id: contactId },
     data: { kanbanStageId: stageId },
+  });
+
+  // Auto-create activity for stage change
+  await db.activity.create({
+    data: {
+      workspaceId: dbUser.workspaceId,
+      contactId,
+      type: 'STAGE_CHANGE',
+      content: `Moved to ${stage.name}`,
+      authorId: dbUser.id,
+    },
   });
 
   return NextResponse.json({ contact: updated });

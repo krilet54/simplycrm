@@ -2,108 +2,185 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
-import { logActivity } from '@/lib/activity';
 import { z } from 'zod';
+import { notifyTaskAssignment } from '@/lib/notifications';
 
 // ── POST /api/tasks ────────────────────────────────────────────────────────
 const createTaskSchema = z.object({
-  contactId: z.string().uuid(),
-  title: z.string().min(3).max(200),
-  description: z.string().optional(),
-  dueDate: z.string().datetime(),
+  title: z.string().min(1).max(200),
+  description: z.string().max(1000).optional(),
+  contactId: z.string().uuid().optional(),
+  assignedToId: z.string().uuid().optional(),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH']).default('MEDIUM'),
-  type: z.enum(['MANUAL', 'AUTO_PAYMENT_DUE', 'AUTO_NO_REPLY_24H', 'AUTO_INVOICE_SENT', 'AUTO_INVOICE_OVERDUE']).default('MANUAL'),
+  dueDate: z.string().datetime().optional(),
 });
 
 export async function POST(req: NextRequest) {
-  const supabase = createSupabaseServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  const dbUser = await db.user.findUnique({ where: { supabaseId: user.id } });
-  if (!dbUser) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-
-  const body = await req.json();
-  const parsed = createTaskSchema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
-  }
-
-  const { contactId, title, description, dueDate, priority, type } = parsed.data;
-
-  // Verify contact belongs to workspace
-  const contact = await db.contact.findFirst({
-    where: { id: contactId, workspaceId: dbUser.workspaceId },
-  });
-  if (!contact) {
-    return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
-  }
-
   try {
+    const supabase = createSupabaseServerClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const dbUser = await db.user.findUnique({ where: { supabaseId: user.id } });
+    if (!dbUser) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
+    const body = await req.json();
+    const parsed = createTaskSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    }
+
+    const { title, description, contactId, assignedToId, priority, dueDate } = parsed.data;
+
+    // Verify contact belongs to workspace if provided
+    if (contactId) {
+      const contact = await db.contact.findFirst({
+        where: { id: contactId, workspaceId: dbUser.workspaceId },
+      });
+      if (!contact) {
+        return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
+      }
+    }
+
+    // Get assignee details if provided
+    let assignee = null;
+    if (assignedToId) {
+      assignee = await db.user.findFirst({
+        where: { id: assignedToId, workspaceId: dbUser.workspaceId },
+      });
+      if (!assignee) {
+        return NextResponse.json({ error: 'User not found' }, { status: 404 });
+      }
+    }
+
     const task = await db.task.create({
       data: {
         workspaceId: dbUser.workspaceId,
-        contactId,
-        createdBy: dbUser.id,
+        contactId: contactId || null,
+        createdById: dbUser.id,
+        assignedToId: assignedToId || null,
         title,
-        description,
-        dueDate: new Date(dueDate),
+        description: description || null,
         priority,
-        type,
+        dueDate: dueDate ? new Date(dueDate) : null,
       },
       include: {
         contact: { select: { id: true, name: true, phoneNumber: true } },
-        creator: { select: { id: true, name: true } },
+        createdBy: { select: { id: true, name: true } },
+        assignedTo: { select: { id: true, name: true, avatarUrl: true, email: true } },
       },
     });
 
-    await logActivity({
-      workspaceId: dbUser.workspaceId,
-      contactId,
-      activityType: 'CONTACT_UPDATED',
-      actorId: dbUser.id,
-      title: `Task created: ${title}`,
-      description: `Due: ${new Date(dueDate).toLocaleDateString()}`,
-      metadata: { taskId: task.id, type },
-    });
+    // Send notification to assignee (if different from creator)
+    if (assignee && assignee.id !== dbUser.id) {
+      try {
+        await notifyTaskAssignment(
+          dbUser.workspaceId,
+          task.id,
+          assignee.id,
+          assignee.name,
+          assignee.email,
+          title,
+          dueDate ? new Date(dueDate) : undefined
+        );
+        console.log('✅ Task assignment notification sent to:', assignee.email);
+      } catch (notifyError) {
+        console.error('Failed to send task notification:', notifyError);
+        // Don't fail the task creation if notification fails
+      }
+    }
 
     return NextResponse.json({ task }, { status: 201 });
-  } catch (error) {
-    console.error('Task creation failed:', error);
-    return NextResponse.json({ error: 'Failed to create task' }, { status: 500 });
+  } catch (error: any) {
+    console.error('❌ POST /api/tasks error:', error?.message || error);
+    return NextResponse.json(
+      { error: 'Failed to create task', details: error?.message },
+      { status: 500 }
+    );
   }
 }
 
 // ── GET /api/tasks ────────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
-  const supabase = createSupabaseServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  try {
+    console.log('📡 GET /api/tasks called');
+    
+    const supabase = createSupabaseServerClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      console.warn('❌ No authenticated user');
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
-  const dbUser = await db.user.findUnique({ where: { supabaseId: user.id } });
-  if (!dbUser) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    const dbUser = await db.user.findUnique({ where: { supabaseId: user.id } });
+    if (!dbUser) {
+      console.warn('❌ User not found in database:', { supabaseId: user.id });
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
 
-  const { searchParams } = new URL(req.url);
-  const status = searchParams.get('status');
-  const contactId = searchParams.get('contactId');
-  const pastDue = searchParams.get('pastDue') === 'true';
+    console.log('✅ User authenticated:', { userId: dbUser.id, role: dbUser.role });
 
-  const where: any = { workspaceId: dbUser.workspaceId };
-  if (status) where.status = status;
-  if (contactId) where.contactId = contactId;
-  if (pastDue) {
-    where.dueDate = { lt: new Date() };
-    where.status = { in: ['TODO', 'IN_PROGRESS'] };
+    const { searchParams } = new URL(req.url);
+    const status = searchParams.get('status');
+    const userRole = searchParams.get('userRole') || dbUser.role;
+    const contactId = searchParams.get('contactId');
+    const overdue = searchParams.get('overdue') === 'true';
+
+    console.log('📋 Query parameters:', { status, userRole, contactId, overdue });
+
+    const where: any = { workspaceId: dbUser.workspaceId };
+    
+    // Role-based visibility: OWNER and ADMIN see all tasks; AGENT sees only their own
+    if (userRole !== 'OWNER' && userRole !== 'ADMIN') {
+      where.OR = [
+        { assignedToId: dbUser.id },
+        { createdById: dbUser.id },
+      ];
+      console.log('🔍 Applied agent filter:', { assignedToId: dbUser.id });
+    }
+    
+    if (status) where.status = status;
+    if (contactId) where.contactId = contactId;
+    
+    if (overdue) {
+      // Combine with existing conditions using AND at top level
+      if (where.OR) {
+        where.AND = [
+          { dueDate: { lt: new Date() } },
+          { status: 'TODO' },  // FIXED: Use TODO instead of PENDING
+          { OR: where.OR },
+        ];
+        delete where.OR;
+      } else {
+        where.dueDate = { lt: new Date() };
+        where.status = 'TODO';  // FIXED: Use TODO instead of PENDING
+      }
+      console.log('⏰ Applied overdue filter');
+    }
+
+    console.log('🔎 Executing query with where clause:', where);
+
+    const tasks = await db.task.findMany({
+      where,
+      include: {
+        contact: { select: { id: true, name: true, phoneNumber: true } },
+        createdBy: { select: { id: true, name: true } },
+        assignedTo: { select: { id: true, name: true, avatarUrl: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    console.log('✅ Query successful, found tasks:', { count: tasks.length });
+    return NextResponse.json({ tasks }, { status: 200 });
+  } catch (error: any) {
+    console.error('❌ GET /api/tasks error:', {
+      message: error?.message,
+      code: error?.code,
+      stack: error?.stack,
+    });
+    return NextResponse.json(
+      { error: 'Failed to fetch tasks', details: error?.message },
+      { status: 500 }
+    );
   }
-
-  const tasks = await db.task.findMany({
-    where,
-    include: {
-      contact: { select: { id: true, name: true, phoneNumber: true } },
-      creator: { select: { id: true, name: true } },
-    },
-    orderBy: { dueDate: 'asc' },
-  });
-
-  return NextResponse.json({ tasks });
 }
