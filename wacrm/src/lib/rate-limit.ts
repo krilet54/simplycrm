@@ -208,5 +208,3 @@ export function getRateLimitTypeForPath(pathname: string): RateLimitType {
 
   return 'general';
 }
-
-}

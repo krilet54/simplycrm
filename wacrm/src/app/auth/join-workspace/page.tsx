@@ -204,7 +204,6 @@ function JoinWorkspaceForm() {
               ? `You've been invited to join ${inviteData.workspaceName}. Complete your account setup below to get started.`
               : 'Track contacts, manage your pipeline, send invoices, and follow up — all in one simple CRM.'}
           </p>
-          </p>
         </div>
 
         <div className="space-y-4">
