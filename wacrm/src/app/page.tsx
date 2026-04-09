@@ -1,13 +1,8 @@
 // src/app/page.tsx
 // Root page - shows landing page for unauthenticated users, dashboard redirect for authenticated
 
-import { redirect } from 'next/navigation';
-import { createSupabaseServerClient } from '@/lib/supabase-server';
 import Link from 'next/link';
 import { Check, Users, Receipt, Briefcase, UserPlus, TrendingUp, ChevronDown } from 'lucide-react';
-
-// Force dynamic rendering (don't pre-render at build time)
-export const dynamic = 'force-dynamic';
 
 // Inline landing page component (avoids import issues with route groups)
 function LandingPage() {
@@ -398,20 +393,6 @@ function LandingPage() {
   );
 }
 
-export default async function HomePage() {
-  try {
-    const supabase = createSupabaseServerClient();
-    const { data: { user } } = await supabase.auth.getUser();
-
-    // Not logged in - show landing page
-    if (!user) {
-      return <LandingPage />;
-    }
-
-    // Logged in - redirect to dashboard (let dashboard handle onboarding check)
-    redirect('/dashboard');
-  } catch (error) {
-    // If auth fails, show landing page instead of 404
-    return <LandingPage />;
-  }
+export default function HomePage() {
+  return <LandingPage />;
 }
