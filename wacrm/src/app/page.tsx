@@ -4,6 +4,9 @@
 import Link from 'next/link';
 import { Check, Users, Receipt, Briefcase, UserPlus, TrendingUp, ChevronDown } from 'lucide-react';
 
+// Force dynamic to ensure Vercel serves this on-request
+export const dynamic = 'force-dynamic';
+
 // Inline landing page component (avoids import issues with route groups)
 function LandingPage() {
   return (

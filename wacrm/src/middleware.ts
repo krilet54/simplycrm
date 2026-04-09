@@ -5,15 +5,17 @@ import { NextResponse, type NextRequest } from 'next/server';
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   
+  // Always allow root path through - it's the public landing page
+  if (pathname === '/') {
+    return NextResponse.next();
+  }
+  
   // Skip auth check for public paths, marketing pages, and API routes (APIs handle auth themselves)
   const publicPaths = ['/login', '/auth/callback', '/auth/join-workspace', '/join/', '/api/', '/terms', '/privacy'];
   const isPublic = publicPaths.some((p) => pathname.startsWith(p));
   
-  // Marketing landing page is also public
-  const isMarketingRoot = pathname === '/';
-  
   // Fast path: skip middleware entirely for public routes
-  if (isPublic || isMarketingRoot) {
+  if (isPublic) {
     return NextResponse.next();
   }
 
@@ -21,38 +23,43 @@ export async function middleware(request: NextRequest) {
     request: { headers: request.headers },
   });
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return request.cookies.get(name)?.value;
+  try {
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          get(name: string) {
+            return request.cookies.get(name)?.value;
+          },
+          set(name: string, value: string, options: CookieOptions) {
+            request.cookies.set({ name, value, ...options });
+            response = NextResponse.next({ request: { headers: request.headers } });
+            response.cookies.set({ name, value, ...options });
+          },
+          remove(name: string, options: CookieOptions) {
+            request.cookies.set({ name, value: '', ...options });
+            response = NextResponse.next({ request: { headers: request.headers } });
+            response.cookies.set({ name, value: '', ...options });
+          },
         },
-        set(name: string, value: string, options: CookieOptions) {
-          request.cookies.set({ name, value, ...options });
-          response = NextResponse.next({ request: { headers: request.headers } });
-          response.cookies.set({ name, value, ...options });
-        },
-        remove(name: string, options: CookieOptions) {
-          request.cookies.set({ name, value: '', ...options });
-          response = NextResponse.next({ request: { headers: request.headers } });
-          response.cookies.set({ name, value: '', ...options });
-        },
-      },
+      }
+    );
+
+    const { data: { user } } = await supabase.auth.getUser();
+
+    // Redirect unauthenticated users to login
+    if (!user) {
+      return NextResponse.redirect(new URL('/login', request.url));
     }
-  );
 
-  const { data: { user } } = await supabase.auth.getUser();
-
-  // Redirect unauthenticated users to login
-  if (!user) {
-    return NextResponse.redirect(new URL('/login', request.url));
-  }
-
-  // Redirect authenticated users away from login
-  if (pathname === '/login') {
-    return NextResponse.redirect(new URL('/', request.url));
+    // Redirect authenticated users away from login
+    if (pathname === '/login') {
+      return NextResponse.redirect(new URL('/', request.url));
+    }
+  } catch (error) {
+    // If auth check fails, allow the request through to the page (page will handle it)
+    console.error('Middleware auth check failed:', error);
   }
 
   return response;
