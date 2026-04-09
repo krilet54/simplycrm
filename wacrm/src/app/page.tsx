@@ -3,7 +3,6 @@
 
 import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
-import { db } from '@/lib/db';
 import Link from 'next/link';
 import { Check, Users, Receipt, Briefcase, UserPlus, TrendingUp, ChevronDown } from 'lucide-react';
 
@@ -406,14 +405,10 @@ export default async function HomePage() {
       return <LandingPage />;
     }
 
-    // Logged in - check if onboarded
-    const dbUser = await db.user.findUnique({ where: { supabaseId: user.id } });
-    if (!dbUser) redirect('/onboarding');
-
-    // Onboarded - go to dashboard
+    // Logged in - redirect to dashboard (let dashboard handle onboarding check)
     redirect('/dashboard');
   } catch (error) {
-    // If auth or db fails, show landing page instead of 404
+    // If auth fails, show landing page instead of 404
     return <LandingPage />;
   }
 }
