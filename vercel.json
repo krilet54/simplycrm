@@ -1,12 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "version": 2,
-  "builds": [
-    {
-      "src": "wacrm/package.json",
-      "use": "@vercel/next"
-    }
-  ],
+  "framework": "nextjs",
+  "installCommand": "cd wacrm && npm ci",
+  "buildCommand": "cd wacrm && npm run build",
+  "devCommand": "cd wacrm && npm run dev",
+  "outputDirectory": "wacrm/.next",
   "crons": [
     {
       "path": "/api/cron/trial-expiry",
