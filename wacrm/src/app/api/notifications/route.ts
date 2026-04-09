@@ -6,8 +6,8 @@ import { markNotificationAsRead, markAllNotificationsAsRead, getUnreadNotificati
 // Store active SSE clients by userId
 const sseClients = new Map<string, Set<ReadableStreamDefaultController>>();
 
-// Export broadcast function for other API routes to use
-export function broadcastToUser(userId: string, notification: any) {
+// Broadcast helper used by this route and injected into notifications library
+function broadcastToUser(userId: string, notification: any) {
   const clients = sseClients.get(userId);
   if (!clients || clients.size === 0) return;
 
@@ -30,8 +30,7 @@ export function broadcastToUser(userId: string, notification: any) {
   }
 }
 
-// Export function to broadcast to multiple users
-export function broadcastToUsers(userIds: string[], notification: any) {
+function broadcastToUsers(userIds: string[], notification: any) {
   userIds.forEach(userId => broadcastToUser(userId, notification));
 }
 
