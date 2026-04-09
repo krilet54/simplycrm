@@ -1,7 +1,5 @@
 {
-  "buildCommand": "cd wacrm && npm run build",
-  "outputDirectory": "wacrm/.next",
-  "installCommand": "cd wacrm && npm install"
+  "root": "wacrm"
 }
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
