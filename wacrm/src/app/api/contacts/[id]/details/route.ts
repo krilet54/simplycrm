@@ -8,7 +8,7 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const { workspace, user: dbUser } = await getAuthenticatedUser();
+    const { workspace, dbUser } = await getAuthenticatedUser();
     const { id } = params;
 
     // Fetch the contact
