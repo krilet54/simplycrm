@@ -11,6 +11,30 @@ export default function OnboardingPage() {
   const [loading, setLoading]                 = useState(false);
   const router = useRouter();
 
+  async function readErrorMessage(res: Response): Promise<string> {
+    const contentType = res.headers.get('content-type') || '';
+
+    if (contentType.includes('application/json')) {
+      const data = await res.json().catch(() => null);
+      const apiError = data?.error;
+
+      if (typeof apiError === 'string' && apiError.trim()) {
+        return apiError;
+      }
+
+      if (apiError && typeof apiError === 'object') {
+        return 'Please check your input and try again.';
+      }
+    }
+
+    const fallbackText = await res.text().catch(() => '');
+    if (fallbackText.trim()) {
+      return fallbackText.slice(0, 140);
+    }
+
+    return 'Something went wrong while setting up your workspace.';
+  }
+
   async function handleFinish() {
     if (!businessName || !ownerName) {
       toast.error('Please fill in all required fields');
@@ -23,9 +47,20 @@ export default function OnboardingPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ businessName, ownerName, phoneNumberId: '', accessToken: '' }),
       });
-      if (!res.ok) throw new Error((await res.json()).error);
+
+      if (!res.ok) {
+        if (res.status === 409) {
+          toast.success('Your workspace is already set up. Redirecting...');
+          router.push('/dashboard');
+          return;
+        }
+
+        throw new Error(await readErrorMessage(res));
+      }
+
       toast.success('Workspace created! Welcome aboard 🎉');
       router.push('/dashboard');
+      router.refresh();
     } catch (err) {
       toast.error((err as Error).message);
     } finally {
