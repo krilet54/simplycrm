@@ -74,7 +74,7 @@ function showNotification(tasks: any[]) {
 
     new Notification(title, {
       body,
-      icon: '/favicon.ico',
+      icon: '/crebo logo 2.png',
       tag: 'task-reminder',
     });
   } else if (Notification.permission !== 'denied') {
