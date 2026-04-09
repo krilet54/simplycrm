@@ -6,6 +6,9 @@ import { createSupabaseServerClient } from '@/lib/supabase-server';
 import Link from 'next/link';
 import { Check, Users, Receipt, Briefcase, UserPlus, TrendingUp, ChevronDown } from 'lucide-react';
 
+// Force dynamic rendering (don't pre-render at build time)
+export const dynamic = 'force-dynamic';
+
 // Inline landing page component (avoids import issues with route groups)
 function LandingPage() {
   return (
