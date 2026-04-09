@@ -397,18 +397,23 @@ function LandingPage() {
 }
 
 export default async function HomePage() {
-  const supabase = createSupabaseServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  try {
+    const supabase = createSupabaseServerClient();
+    const { data: { user } } = await supabase.auth.getUser();
 
-  // Not logged in - show landing page
-  if (!user) {
+    // Not logged in - show landing page
+    if (!user) {
+      return <LandingPage />;
+    }
+
+    // Logged in - check if onboarded
+    const dbUser = await db.user.findUnique({ where: { supabaseId: user.id } });
+    if (!dbUser) redirect('/onboarding');
+
+    // Onboarded - go to dashboard
+    redirect('/dashboard');
+  } catch (error) {
+    // If auth or db fails, show landing page instead of 404
     return <LandingPage />;
   }
-
-  // Logged in - check if onboarded
-  const dbUser = await db.user.findUnique({ where: { supabaseId: user.id } });
-  if (!dbUser) redirect('/onboarding');
-
-  // Onboarded - go to dashboard
-  redirect('/dashboard');
 }
