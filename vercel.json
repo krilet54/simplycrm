@@ -1,0 +1,24 @@
+{
+  "buildCommand": "cd wacrm && npm run build",
+  "outputDirectory": "wacrm/.next",
+  "installCommand": "cd wacrm && npm install"
+}
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "version": 2,
+  "builds": [
+    {
+      "src": "wacrm/package.json",
+      "use": "@vercel/next"
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/trial-expiry",
+      "schedule": "0 8 * * *"
+    }
+  ],
+  "env": {
+    "NODE_ENV": "production"
+  }
+}
