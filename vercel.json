@@ -1,7 +1,4 @@
 {
-  "root": "wacrm"
-}
-{
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "version": 2,
   "builds": [
