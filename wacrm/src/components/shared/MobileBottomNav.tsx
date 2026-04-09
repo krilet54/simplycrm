@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
-import { getSupabaseBrowserClient } from '@/lib/supabase-browser';
+import { requireSupabaseBrowserClient } from '@/lib/supabase-browser';
 import QuickAddContactModal from './QuickAddContactModal';
 
 interface MobileBottomNavProps {
@@ -83,7 +83,6 @@ export default function MobileBottomNav({ user, workspace, badgeCount }: MobileB
   const [modalReady, setModalReady] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
-  const supabase = getSupabaseBrowserClient();
 
   // Fetch kanban stages and tags for modal
   useEffect(() => {
@@ -118,6 +117,7 @@ export default function MobileBottomNav({ user, workspace, badgeCount }: MobileB
   }, [showAddContact, modalReady]);
 
   async function handleSignOut() {
+    const supabase = requireSupabaseBrowserClient();
     await supabase.auth.signOut();
     toast.success('Signed out');
     router.push('/login');

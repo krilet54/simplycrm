@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { getSupabaseBrowserClient } from '@/lib/supabase-browser';
+import { requireSupabaseBrowserClient } from '@/lib/supabase-browser';
 import toast from 'react-hot-toast';
 
 interface InviteData {
@@ -26,7 +26,6 @@ export default function JoinWorkspacePage() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [signingUp, setSigningUp] = useState(false);
-  const supabase = getSupabaseBrowserClient();
 
   console.log('🔧 JoinWorkspacePage loaded - Fields initialized:', { name, phoneNumber, password });
 
@@ -72,6 +71,8 @@ export default function JoinWorkspacePage() {
 
     setSigningUp(true);
     try {
+      const supabase = requireSupabaseBrowserClient();
+
       // Sign up with Supabase
       const { data: authData, error: signUpError } = await supabase.auth.signUp({
         email: inviteData!.email,

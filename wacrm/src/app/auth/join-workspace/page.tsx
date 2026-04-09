@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { getSupabaseBrowserClient } from '@/lib/supabase-browser';
+import { requireSupabaseBrowserClient } from '@/lib/supabase-browser';
 import toast from 'react-hot-toast';
 
 // Ensure this page is rendered dynamically on the server, not statically
@@ -85,7 +85,7 @@ function JoinWorkspaceForm() {
 
     setIsSigningUp(true);
     try {
-      const supabase = getSupabaseBrowserClient();
+      const supabase = requireSupabaseBrowserClient();
       const inviteEmail = inviteData?.email || email;
       const inviteRole = inviteData?.role || role;
       const workspaceId = inviteData?.workspaceId || workspace;

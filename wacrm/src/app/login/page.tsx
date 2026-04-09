@@ -2,7 +2,7 @@
 'use client';
 
 import { useState } from 'react';
-import { getSupabaseBrowserClient } from '@/lib/supabase-browser';
+import { requireSupabaseBrowserClient } from '@/lib/supabase-browser';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 
@@ -14,13 +14,14 @@ export default function LoginPage() {
   const [loading,  setLoading]  = useState(false);
   const [resetSent, setResetSent] = useState(false);
   const router = useRouter();
-  const supabase = getSupabaseBrowserClient();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
 
     try {
+      const supabase = requireSupabaseBrowserClient();
+
       if (mode === 'reset') {
         const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
           redirectTo: `${window.location.origin}/auth/reset-password`,

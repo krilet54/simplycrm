@@ -6,7 +6,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { Resend } from 'resend';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+export const dynamic = 'force-dynamic';
+
+function getResendClient() {
+  if (!process.env.RESEND_API_KEY) {
+    throw new Error('RESEND_API_KEY is not configured');
+  }
+
+  return new Resend(process.env.RESEND_API_KEY);
+}
 
 export async function GET(req: NextRequest) {
   // Verify cron secret for security
@@ -16,6 +24,8 @@ export async function GET(req: NextRequest) {
   }
 
   try {
+    const resend = getResendClient();
+
     // Find workspaces whose trial expired in the last 24 hours
     const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const now = new Date();

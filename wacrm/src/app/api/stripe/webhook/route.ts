@@ -3,7 +3,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { db } from '@/lib/db';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2023-10-16' });
+export const dynamic = 'force-dynamic';
+
+function getStripeClient() {
+  if (!process.env.STRIPE_SECRET_KEY) {
+    throw new Error('STRIPE_SECRET_KEY is not configured');
+  }
+
+  return new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2023-10-16' });
+}
 
 const PRICE_TO_PLAN: Record<string, 'STARTER' | 'PRO'> = {
   [process.env.STRIPE_STARTER_PRICE_ID ?? '']: 'STARTER',
@@ -16,7 +24,12 @@ export async function POST(req: NextRequest) {
 
   let event: Stripe.Event;
   try {
-    event = stripe.webhooks.constructEvent(body, signature, process.env.STRIPE_WEBHOOK_SECRET!);
+    if (!process.env.STRIPE_WEBHOOK_SECRET) {
+      return new NextResponse('Webhook Error: STRIPE_WEBHOOK_SECRET is not configured', { status: 500 });
+    }
+
+    const stripe = getStripeClient();
+    event = stripe.webhooks.constructEvent(body, signature, process.env.STRIPE_WEBHOOK_SECRET);
   } catch (err) {
     return new NextResponse(`Webhook Error: ${(err as Error).message}`, { status: 400 });
   }

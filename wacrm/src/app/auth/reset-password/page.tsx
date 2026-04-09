@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { getSupabaseBrowserClient } from '@/lib/supabase-browser';
+import { requireSupabaseBrowserClient } from '@/lib/supabase-browser';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
@@ -12,7 +12,6 @@ export default function ResetPasswordPage() {
   const [loading, setLoading] = useState(false);
   const [resetSuccess, setResetSuccess] = useState(false);
   const router = useRouter();
-  const supabase = getSupabaseBrowserClient();
 
   async function handleResetPassword(e: React.FormEvent) {
     e.preventDefault();
@@ -29,6 +28,7 @@ export default function ResetPasswordPage() {
 
     setLoading(true);
     try {
+      const supabase = requireSupabaseBrowserClient();
       const { error } = await supabase.auth.updateUser({ password });
       if (error) throw error;
 

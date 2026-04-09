@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { getSupabaseBrowserClient } from '@/lib/supabase-browser';
+import { requireSupabaseBrowserClient } from '@/lib/supabase-browser';
 import toast from 'react-hot-toast';
 import QuickAddContactModal from './QuickAddContactModal';
 import { useTaskReminders } from '@/hooks/useTaskReminders';
@@ -89,7 +89,6 @@ export default function Sidebar({ user, workspace, tags = [] }: SidebarProps) {
   const [badgeCount, setBadgeCount] = useState(0);
   const pathname = usePathname();
   const router   = useRouter();
-  const supabase = getSupabaseBrowserClient();
 
   // Initialize task reminder system
   useTaskReminders();
@@ -115,6 +114,7 @@ export default function Sidebar({ user, workspace, tags = [] }: SidebarProps) {
   }, []);
 
   async function handleSignOut() {
+    const supabase = requireSupabaseBrowserClient();
     await supabase.auth.signOut();
     toast.success('Signed out');
     router.push('/login');
