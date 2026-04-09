@@ -5,35 +5,8 @@
       "schedule": "0 8 * * *"
     }
   ],
-  "buildCommand": "npm ci && npm run build",
-  "outputDirectory": ".next",
   "env": {
     "NODE_ENV": "production"
-  },
-  "trailingSlash": false,
-  "cleanUrls": true,
-  "headers": [
-    {
-      "source": "/api/(.*)",
-      "headers": [
-        {
-          "key": "X-Content-Type-Options",
-          "value": "nosniff"
-        },
-        {
-          "key": "X-Frame-Options",
-          "value": "SAMEORIGIN"
-        },
-        {
-          "key": "X-XSS-Protection",
-          "value": "1; mode=block"
-        },
-        {
-          "key": "Referrer-Policy",
-          "value": "strict-origin-when-cross-origin"
-        }
-      ]
-    }
-  ]
+  }
 }
 
