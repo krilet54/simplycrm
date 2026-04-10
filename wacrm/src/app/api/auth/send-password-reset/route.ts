@@ -3,7 +3,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServerClient, createSupabaseServiceClient } from '@/lib/supabase-server';
-import { sendPasswordResetEmailTemplate, sendTemplateEmail } from '@/lib/email';
+import { passwordResetEmailTemplate, sendTemplateEmail } from '@/lib/email';
 import { db } from '@/lib/db';
 import { checkRateLimit } from '@/lib/rate-limit';
 
@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Find the user in database
-    const dbUser = await db.user.findUnique({
+    const dbUser = await db.user.findFirst({
       where: { email },
       include: { workspace: true },
     });
@@ -56,10 +56,9 @@ export async function POST(req: NextRequest) {
 
     // Send beautiful password reset email using our template
     try {
-      const html = sendPasswordResetEmailTemplate({
+      const html = passwordResetEmailTemplate({
         recipientName: dbUser.name || email.split('@')[0],
         resetUrl: data.properties.action_link,
-        businessName: 'Crebo',
         supportEmail: 'support@crebo.in',
       });
 

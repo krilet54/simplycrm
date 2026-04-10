@@ -59,7 +59,6 @@ export async function sendVerificationEmail(
   const html = verificationEmailTemplate({
     recipientName: userName,
     businessName: workspace.businessName,
-    email: userEmail,
     verificationUrl,
     supportEmail: workspace.supportEmail,
   });
