@@ -224,3 +224,75 @@ export async function getEmailStats(workspaceId: string) {
 
   return { totalSent, failedEmails, draftEmails };
 }
+
+/**
+ * Get sender email configuration - uses custom domain or fallback
+ */
+export function getSenderEmail(): string {
+  // Use your custom domain email
+  if (process.env.RESEND_FROM_EMAIL) {
+    return process.env.RESEND_FROM_EMAIL;
+  }
+  // Fallback to custom domain or default
+  return process.env.NEXT_PUBLIC_APP_DOMAIN 
+    ? `noreply@${process.env.NEXT_PUBLIC_APP_DOMAIN}`
+    : 'onboarding@resend.dev';
+}
+
+/**
+ * Send a transactional email with beautiful template
+ * Use this for system emails (forgot password, verification, etc.)
+ */
+export async function sendTemplateEmail({
+  to,
+  subject,
+  html,
+  replyTo,
+}: {
+  to: string;
+  subject: string;
+  html: string;
+  replyTo?: string;
+}) {
+  try {
+    const resendClient = getResend();
+    const fromEmail = getSenderEmail();
+    
+    // Extract display name from env or use default
+    const fromName = process.env.NEXT_PUBLIC_APP_NAME || 'SimplyCRM';
+
+    const result = await resendClient.emails.send({
+      from: `${fromName} <${fromEmail}>`,
+      to,
+      subject,
+      html,
+      replyTo,
+    });
+
+    if (result.error) {
+      console.error('Template email send failed:', result.error);
+      throw new Error(result.error.message || 'Email send failed');
+    }
+
+    return result;
+  } catch (error) {
+    console.error('Template email send error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Import template functions for convenience
+ */
+export {
+  welcomeEmailTemplate,
+  verificationEmailTemplate,
+  passwordResetEmailTemplate,
+  teamInviteEmailTemplate,
+  invoiceSentEmailTemplate,
+  followupReminderEmailTemplate,
+  taskAssignmentEmailTemplate,
+  contactAssignmentEmailTemplate,
+  notificationEmailTemplate,
+  trialEndingSoonEmailTemplate,
+} from '@/lib/email-templates';
