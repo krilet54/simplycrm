@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createClient } from '@supabase/supabase-js';
 import { checkRateLimit } from '@/lib/rate-limit';
-import { createSupabaseServiceClient } from '@/lib/supabase-server';
 
 const signupSchema = z.object({
   email: z.string().email().max(320),
@@ -58,82 +57,6 @@ function createSupabaseAnonClient() {
       },
     }
   );
-}
-
-async function sendResendVerificationEmail(to: string, confirmationUrl: string) {
-  if (!process.env.RESEND_API_KEY) {
-    throw new Error('RESEND_API_KEY is not configured for fallback delivery');
-  }
-
-  const { Resend } = await import('resend');
-  const resend = new Resend(process.env.RESEND_API_KEY);
-  const from = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
-
-  const result = await resend.emails.send({
-    from,
-    to,
-    subject: 'Confirm your email to finish signing up',
-    html: `
-      <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; color: #1f2937;">
-        <h2 style="margin-bottom: 12px;">Confirm your email</h2>
-        <p style="line-height: 1.6; margin-bottom: 16px;">
-          Click the button below to verify your email address and complete your account setup.
-        </p>
-        <p style="margin: 24px 0;">
-          <a href="${confirmationUrl}" style="display: inline-block; background: #166534; color: #ffffff; text-decoration: none; padding: 12px 20px; border-radius: 8px; font-weight: 600;">
-            Verify Email
-          </a>
-        </p>
-        <p style="line-height: 1.6; font-size: 13px; color: #6b7280;">
-          If the button does not work, copy this link into your browser:<br />
-          <a href="${confirmationUrl}">${confirmationUrl}</a>
-        </p>
-      </div>
-    `,
-  });
-
-  if ((result as any)?.error) {
-    throw new Error((result as any).error.message || 'Resend fallback email failed');
-  }
-}
-
-async function sendVerificationFallbackEmail(params: {
-  email: string;
-  password: string;
-  redirectCandidates: string[];
-}) {
-  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    throw new Error('SUPABASE_SERVICE_ROLE_KEY is not configured for fallback link generation');
-  }
-
-  const supabaseAdmin = createSupabaseServiceClient();
-  const redirectOptions: Array<string | undefined> = [...params.redirectCandidates, undefined];
-  let actionLink: string | null = null;
-
-  for (const redirectTo of redirectOptions) {
-    const payload: any = {
-      type: 'signup',
-      email: params.email,
-      password: params.password,
-    };
-
-    if (redirectTo) {
-      payload.options = { redirectTo };
-    }
-
-    const { data, error } = await supabaseAdmin.auth.admin.generateLink(payload);
-
-    if (!error && data?.properties?.action_link) {
-      actionLink = data.properties.action_link;
-      break;
-    }
-  }
-
-  if (!actionLink) {
-    throw new Error('Unable to generate fallback verification link');
-  }
-
-  await sendResendVerificationEmail(params.email, actionLink);
 }
 
 export async function POST(req: NextRequest) {
@@ -206,28 +129,6 @@ export async function POST(req: NextRequest) {
 
       console.error('Signup signUp failed:', error.message);
       if (isConfirmationEmailError(error.message)) {
-        try {
-          await sendVerificationFallbackEmail({
-            email,
-            password,
-            redirectCandidates,
-          });
-
-          return NextResponse.json(
-            {
-              user: {
-                id: data?.user?.id,
-                email,
-              },
-              emailConfirmed: false,
-              fallbackDelivery: true,
-            },
-            { status: 201 }
-          );
-        } catch (fallbackError: any) {
-          console.error('Signup fallback verification email failed:', fallbackError?.message || fallbackError);
-        }
-
         return NextResponse.json(
           {
             error:
