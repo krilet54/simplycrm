@@ -32,9 +32,21 @@ export default function LoginPage() {
         setResetSent(true);
         toast.success('Check your email for a reset link. It expires in 1 hour.');
       } else if (mode === 'signup') {
-        const { error } = await supabase.auth.signUp({ email, password });
-        if (error) throw error;
-        toast.success('Check your email to confirm your account!');
+        const res = await fetch('/api/auth/signup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          if (typeof data.error === 'string') throw new Error(data.error);
+          throw new Error('Failed to create account');
+        }
+
+        toast.success('Account created successfully! You can sign in now.');
+        setMode('login');
+        setPassword('');
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;

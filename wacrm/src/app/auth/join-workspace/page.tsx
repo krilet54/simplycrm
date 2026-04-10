@@ -2,7 +2,6 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { requireSupabaseBrowserClient } from '@/lib/supabase-browser';
 import toast from 'react-hot-toast';
 
 // Ensure this page is rendered dynamically on the server, not statically
@@ -85,22 +84,26 @@ function JoinWorkspaceForm() {
 
     setIsSigningUp(true);
     try {
-      const supabase = requireSupabaseBrowserClient();
       const inviteEmail = inviteData?.email || email;
       const inviteRole = inviteData?.role || role;
       const workspaceId = inviteData?.workspaceId || workspace;
 
-      // 1. Sign up with Supabase Auth
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: inviteEmail,
-        password,
+      // 1. Create auth user through server-side signup endpoint
+      const signupRes = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: inviteEmail,
+          password,
+        }),
       });
 
-      if (authError) {
-        throw new Error(authError.message);
+      const signupData = await signupRes.json();
+      if (!signupRes.ok) {
+        throw new Error(typeof signupData.error === 'string' ? signupData.error : 'Failed to create account');
       }
 
-      if (!authData.user) {
+      if (!signupData.user?.id) {
         throw new Error('Sign up failed - no user returned');
       }
 
@@ -110,7 +113,7 @@ function JoinWorkspaceForm() {
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          supabaseId: authData.user.id,
+          supabaseId: signupData.user.id,
           email: inviteEmail,
           fullName: inviteData ? inviteEmail.split('@')[0] : fullName,
           workspaceId,
@@ -132,7 +135,7 @@ function JoinWorkspaceForm() {
         });
       }
 
-      toast.success('Account created! Check your email to verify, then sign in.');
+      toast.success('Account created successfully! Please sign in.');
       
       // Redirect to login
       setTimeout(() => {
@@ -311,7 +314,7 @@ function JoinWorkspaceForm() {
               <p className="text-xs text-blue-700">
                 <strong>What happens next:</strong>
                 <br />
-                1. We'll send you an email to verify your address
+                1. Your account is created instantly
                 <br />
                 2. Sign in with your email and password
                 <br />

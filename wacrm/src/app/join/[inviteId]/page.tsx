@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { requireSupabaseBrowserClient } from '@/lib/supabase-browser';
 import toast from 'react-hot-toast';
 
 interface InviteData {
@@ -71,16 +70,22 @@ export default function JoinWorkspacePage() {
 
     setSigningUp(true);
     try {
-      const supabase = requireSupabaseBrowserClient();
-
-      // Sign up with Supabase
-      const { data: authData, error: signUpError } = await supabase.auth.signUp({
-        email: inviteData!.email,
-        password,
+      // Create auth user through server-side signup endpoint
+      const signupRes = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: inviteData!.email,
+          password,
+        }),
       });
 
-      if (signUpError) throw signUpError;
-      if (!authData.user) throw new Error('Failed to create account');
+      const signupData = await signupRes.json();
+      if (!signupRes.ok) {
+        throw new Error(typeof signupData.error === 'string' ? signupData.error : 'Failed to create account');
+      }
+
+      if (!signupData.user?.id) throw new Error('Failed to create account');
 
       // Accept invite and create user in workspace with name/phone
       const res = await fetch(`/api/workspace/invite`, {
@@ -89,7 +94,7 @@ export default function JoinWorkspacePage() {
         body: JSON.stringify({ 
           acceptInvite: true,
           inviteId,
-          supabaseId: authData.user.id,
+          supabaseId: signupData.user.id,
           name,
           phoneNumber
         }),
@@ -101,7 +106,7 @@ export default function JoinWorkspacePage() {
       }
 
       // Show success message
-      toast.success('✅ Account created! Check your email to verify, then sign in.');
+      toast.success('✅ Account created! Please sign in.');
       
       // Redirect to login page
       setTimeout(() => {
@@ -288,7 +293,7 @@ export default function JoinWorkspacePage() {
               <p className="text-xs text-blue-700">
                 <strong>What happens next:</strong>
                 <br />
-                1. We'll send you an email to verify your address
+                1. Your account is created instantly
                 <br />
                 2. Sign in with your email and password
                 <br />
