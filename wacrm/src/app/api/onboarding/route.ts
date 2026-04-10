@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
 import { checkRateLimit } from '@/lib/rate-limit';
+import { sendWelcomeEmail } from '@/lib/email-helpers';
 import { z } from 'zod';
 
 const schema = z.object({
@@ -100,6 +101,23 @@ export async function POST(req: NextRequest) {
 
         return workspace;
       });
+
+      // Send welcome email after successful onboarding
+      try {
+        await sendWelcomeEmail(
+          email,
+          ownerName,
+          {
+            businessName,
+            appUrl: process.env.NEXT_PUBLIC_APP_URL || 'https://app.crebo.in',
+            supportEmail: 'support@crebo.in',
+            domain: 'crebo.in',
+          }
+        );
+      } catch (emailError) {
+        console.error('Failed to send welcome email:', emailError);
+        // Don't fail the response if email fails
+      }
 
       return NextResponse.json({ workspace: result }, { status: 201 });
     } catch (err) {

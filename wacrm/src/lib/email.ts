@@ -229,14 +229,12 @@ export async function getEmailStats(workspaceId: string) {
  * Get sender email configuration - uses custom domain or fallback
  */
 export function getSenderEmail(): string {
-  // Use your custom domain email
+  // Use crebo.in domain
   if (process.env.RESEND_FROM_EMAIL) {
     return process.env.RESEND_FROM_EMAIL;
   }
-  // Fallback to custom domain or default
-  return process.env.NEXT_PUBLIC_APP_DOMAIN 
-    ? `noreply@${process.env.NEXT_PUBLIC_APP_DOMAIN}`
-    : 'onboarding@resend.dev';
+  // Fallback to crebo.in
+  return 'noreply@crebo.in';
 }
 
 /**
