@@ -121,7 +121,6 @@ export default function MobileBottomNav({ user, workspace, badgeCount }: MobileB
     await supabase.auth.signOut();
     toast.success('Signed out');
     router.push('/login');
-    router.refresh();
   }
 
   const initials = user.name
@@ -227,7 +226,7 @@ export default function MobileBottomNav({ user, workspace, badgeCount }: MobileB
           onSuccess={() => {
             setShowAddContact(false);
             setModalReady(false);
-            router.refresh();
+            router.push('/dashboard/contacts');
           }}
         />
       )}

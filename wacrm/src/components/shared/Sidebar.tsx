@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { requireSupabaseBrowserClient } from '@/lib/supabase-browser';
 import toast from 'react-hot-toast';
 import QuickAddContactModal from './QuickAddContactModal';
@@ -24,6 +24,7 @@ interface SidebarProps {
     kanbanStages?: Array<{ id: string; name: string; position: number }>;
   };
   tags?: Array<{ id: string; name: string; color: string }>;
+  badgeCount?: number;
 }
 
 const navItems = [
@@ -84,41 +85,61 @@ const planColors: Record<string, string> = {
   PRO:     '#6366f1',
 };
 
-export default function Sidebar({ user, workspace, tags = [] }: SidebarProps) {
+export default function Sidebar({ user, workspace, tags = [], badgeCount = 0 }: SidebarProps) {
   const [showAddContact, setShowAddContact] = useState(false);
-  const [badgeCount, setBadgeCount] = useState(0);
+  const [modalReady, setModalReady] = useState(false);
+  const [kanbanStages, setKanbanStages] = useState<Array<{ id: string; name: string; position: number }>>([]);
+  const [modalTags, setModalTags] = useState<Array<{ id: string; name: string; color: string }>>([]);
   const pathname = usePathname();
   const router   = useRouter();
 
   // Initialize task reminder system
   useTaskReminders();
 
-  // Fetch badge count for Follow-ups
   useEffect(() => {
-    async function fetchBadgeCount() {
+    if (!showAddContact || modalReady) return;
+
+    let isMounted = true;
+    async function fetchModalData() {
       try {
-        const res = await fetch('/api/followups/count');
-        if (res.ok) {
-          const data = await res.json();
-          setBadgeCount(data.total || 0);
+        const [stagesRes, tagsRes] = await Promise.all([
+          fetch('/api/kanban/stages'),
+          fetch('/api/tags'),
+        ]);
+
+        if (stagesRes.ok && isMounted) {
+          const stagesData = await stagesRes.json();
+          setKanbanStages(stagesData.stages || []);
+        }
+
+        if (tagsRes.ok && isMounted) {
+          const tagsData = await tagsRes.json();
+          setModalTags(tagsData.tags || []);
+        }
+
+        if (isMounted) {
+          setModalReady(true);
         }
       } catch (error) {
-        console.error('Failed to fetch follow-ups count:', error);
+        console.error('Failed to load quick-add modal data:', error);
+        toast.error('Failed to load form data');
+        if (isMounted) {
+          setShowAddContact(false);
+        }
       }
     }
-    
-    fetchBadgeCount();
-    // Refresh every 30 seconds
-    const interval = setInterval(fetchBadgeCount, 30000);
-    return () => clearInterval(interval);
-  }, []);
+
+    fetchModalData();
+    return () => {
+      isMounted = false;
+    };
+  }, [showAddContact, modalReady]);
 
   async function handleSignOut() {
     const supabase = requireSupabaseBrowserClient();
     await supabase.auth.signOut();
     toast.success('Signed out');
     router.push('/login');
-    router.refresh();
   }
 
   const initials = user.name
@@ -227,15 +248,18 @@ export default function Sidebar({ user, workspace, tags = [] }: SidebarProps) {
       </div>
 
       {/* Quick Add Contact Modal */}
-      {showAddContact && (
+      {showAddContact && modalReady && (
         <QuickAddContactModal
-          kanbanStages={workspace.kanbanStages || []}
-          tags={tags}
-          onClose={() => setShowAddContact(false)}
+          kanbanStages={kanbanStages}
+          tags={modalTags.length > 0 ? modalTags : tags}
+          onClose={() => {
+            setShowAddContact(false);
+            setModalReady(false);
+          }}
           onSuccess={() => {
             setShowAddContact(false);
-            // Navigate to contacts page to show new contact
-            window.location.href = '/dashboard/contacts';
+            setModalReady(false);
+            router.push('/dashboard/contacts');
           }}
         />
       )}

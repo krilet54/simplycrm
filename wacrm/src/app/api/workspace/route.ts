@@ -538,100 +538,71 @@ export async function DELETE(req: NextRequest) {
       select: { supabaseId: true },
     });
 
-    // Delete all related data in correct order (respecting foreign keys)
-    await db.$transaction(async (tx) => {
-      // 1. Delete invoice items
-      await tx.invoiceItem.deleteMany({
-        where: { invoice: { workspaceId } }
-      });
-      console.log('  ✓ Deleted invoice items');
+    // Delete all related data in dependency order without interactive transactions.
+    // This avoids transaction-id expiration failures on serverless runtimes.
+    await db.invoiceItem.deleteMany({ where: { invoice: { workspaceId } } });
+    console.log('  ✓ Deleted invoice items');
 
-      // 2. Delete recurring invoice items
-      await tx.recurringInvoiceItem.deleteMany({
-        where: { recurringInvoice: { workspaceId } }
-      });
-      console.log('  ✓ Deleted recurring invoice items');
+    await db.recurringInvoiceItem.deleteMany({ where: { recurringInvoice: { workspaceId } } });
+    console.log('  ✓ Deleted recurring invoice items');
 
-      // 3. Delete invoices
-      await tx.invoice.deleteMany({ where: { workspaceId } });
-      console.log('  ✓ Deleted invoices');
+    await db.invoice.deleteMany({ where: { workspaceId } });
+    console.log('  ✓ Deleted invoices');
 
-      // 4. Delete recurring invoices
-      await tx.recurringInvoice.deleteMany({ where: { workspaceId } });
-      console.log('  ✓ Deleted recurring invoices');
+    await db.recurringInvoice.deleteMany({ where: { workspaceId } });
+    console.log('  ✓ Deleted recurring invoices');
 
-      // 5. Delete emails
-      await tx.email.deleteMany({ where: { workspaceId } });
-      console.log('  ✓ Deleted emails');
+    await db.email.deleteMany({ where: { workspaceId } });
+    console.log('  ✓ Deleted emails');
 
-      // 6. Delete notes
-      await tx.note.deleteMany({ where: { contact: { workspaceId } } });
-      console.log('  ✓ Deleted notes');
+    await db.note.deleteMany({ where: { contact: { workspaceId } } });
+    console.log('  ✓ Deleted notes');
 
-      // 7. Delete activities  
-      await tx.activity.deleteMany({ where: { workspaceId } });
-      console.log('  ✓ Deleted activities');
+    await db.activity.deleteMany({ where: { workspaceId } });
+    console.log('  ✓ Deleted activities');
 
-      // 8. Delete follow-ups
-      await tx.followUp.deleteMany({ where: { contact: { workspaceId } } });
-      console.log('  ✓ Deleted follow-ups');
+    await db.followUp.deleteMany({ where: { contact: { workspaceId } } });
+    console.log('  ✓ Deleted follow-ups');
 
-      // 9. Delete tasks
-      await tx.task.deleteMany({ 
-        where: { 
-          OR: [
-            { createdBy: { workspaceId } },
-            { assignedTo: { workspaceId } },
-          ]
-        }
-      });
-      console.log('  ✓ Deleted tasks');
-
-      // 10. Delete contact tags (join table) - use Prisma model instead of raw SQL
-      await tx.contactTag.deleteMany({
-        where: { contact: { workspaceId } }
-      });
-      console.log('  ✓ Deleted contact tags');
-
-      // 11. Delete contacts
-      await tx.contact.deleteMany({ where: { workspaceId } });
-      console.log('  ✓ Deleted contacts');
-
-      // 12. Delete notifications
-      await tx.notification.deleteMany({ where: { workspaceId } });
-      console.log('  ✓ Deleted notifications');
-
-      // 13. Delete invites
-      await tx.invite.deleteMany({ where: { workspaceId } });
-      console.log('  ✓ Deleted invites');
-
-      // 14. Delete quick replies
-      await tx.quickReply.deleteMany({ where: { workspaceId } });
-      console.log('  ✓ Deleted quick replies');
-
-      // 15. Delete tags
-      await tx.tag.deleteMany({ where: { workspaceId } });
-      console.log('  ✓ Deleted tags');
-
-      // 16. Delete kanban stages
-      await tx.kanbanStage.deleteMany({ where: { workspaceId } });
-      console.log('  ✓ Deleted kanban stages');
-
-      // 17. Delete Meta OAuth token
-      await tx.metaOAuthToken.deleteMany({ where: { workspaceId } });
-      console.log('  ✓ Deleted Meta OAuth tokens');
-
-      // 18. Delete all users in workspace
-      await tx.user.deleteMany({ where: { workspaceId } });
-      console.log('  ✓ Deleted users');
-
-      // 19. Delete workspace
-      await tx.workspace.delete({ where: { id: workspaceId } });
-      console.log('  ✓ Deleted workspace');
-    }, {
-      timeout: 120000,
-      maxWait: 10000,
+    await db.task.deleteMany({
+      where: {
+        OR: [
+          { createdBy: { workspaceId } },
+          { assignedTo: { workspaceId } },
+        ],
+      },
     });
+    console.log('  ✓ Deleted tasks');
+
+    await db.contactTag.deleteMany({ where: { contact: { workspaceId } } });
+    console.log('  ✓ Deleted contact tags');
+
+    await db.contact.deleteMany({ where: { workspaceId } });
+    console.log('  ✓ Deleted contacts');
+
+    await db.notification.deleteMany({ where: { workspaceId } });
+    console.log('  ✓ Deleted notifications');
+
+    await db.invite.deleteMany({ where: { workspaceId } });
+    console.log('  ✓ Deleted invites');
+
+    await db.quickReply.deleteMany({ where: { workspaceId } });
+    console.log('  ✓ Deleted quick replies');
+
+    await db.tag.deleteMany({ where: { workspaceId } });
+    console.log('  ✓ Deleted tags');
+
+    await db.kanbanStage.deleteMany({ where: { workspaceId } });
+    console.log('  ✓ Deleted kanban stages');
+
+    await db.metaOAuthToken.deleteMany({ where: { workspaceId } });
+    console.log('  ✓ Deleted Meta OAuth tokens');
+
+    await db.user.deleteMany({ where: { workspaceId } });
+    console.log('  ✓ Deleted users');
+
+    await db.workspace.delete({ where: { id: workspaceId } });
+    console.log('  ✓ Deleted workspace');
 
     // Delete Supabase auth users after the DB transaction commits.
     const { createSupabaseServiceClient } = await import('@/lib/supabase-server');

@@ -57,6 +57,7 @@ export default function DashboardLayoutClient({ children, user, trialStatus }: D
             user={user} 
             workspace={user.workspace} 
             tags={user.workspace.tags}
+            badgeCount={badgeCount}
           />
         </div>
 

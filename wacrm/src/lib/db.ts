@@ -23,10 +23,10 @@ function resolveDatabaseUrl(): string | undefined {
         if (!parsed.searchParams.has('pgbouncer')) {
           parsed.searchParams.set('pgbouncer', 'true');
         }
-        // Increase connection_limit for better concurrent handling
-        // Each Vercel function can handle multiple concurrent requests
+        // Keep low connection counts per function to avoid exhausting Postgres
+        // on serverless burst traffic.
         if (!parsed.searchParams.has('connection_limit')) {
-          parsed.searchParams.set('connection_limit', '5');
+          parsed.searchParams.set('connection_limit', '1');
         }
         return parsed.toString();
       }
