@@ -106,7 +106,7 @@ export default function JoinWorkspacePage() {
       }
 
       // Show success message
-      toast.success('✅ Account created! Please sign in.');
+      toast.success('✅ Verification email sent. Please verify your email, then sign in.');
       
       // Redirect to login page
       setTimeout(() => {
@@ -293,11 +293,11 @@ export default function JoinWorkspacePage() {
               <p className="text-xs text-blue-700">
                 <strong>What happens next:</strong>
                 <br />
-                1. Your account is created instantly
+                1. Your account is created
                 <br />
-                2. Sign in with your email and password
+                2. Verify your email from the Supabase confirmation mail
                 <br />
-                3. You're in! Start collaborating with your team
+                3. Sign in with your email and password
               </p>
             </div>
 

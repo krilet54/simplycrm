@@ -44,7 +44,7 @@ export default function LoginPage() {
           throw new Error('Failed to create account');
         }
 
-        toast.success('Account created successfully! You can sign in now.');
+        toast.success('Verification email sent. Please verify your email before signing in.');
         setMode('login');
         setPassword('');
       } else {

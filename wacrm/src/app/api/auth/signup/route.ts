@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { createSupabaseServiceClient } from '@/lib/supabase-server';
+import { createClient } from '@supabase/supabase-js';
 import { checkRateLimit } from '@/lib/rate-limit';
 
 const signupSchema = z.object({
@@ -11,6 +11,42 @@ const signupSchema = z.object({
 function isDuplicateUserError(message: string) {
   const normalized = message.toLowerCase();
   return normalized.includes('already') || normalized.includes('registered') || normalized.includes('exists');
+}
+
+function isConfirmationEmailError(message: string) {
+  const normalized = message.toLowerCase();
+  return normalized.includes('error sending confirmation email');
+}
+
+function getConfiguredAppOrigin() {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+  if (!appUrl) return null;
+
+  try {
+    return new URL(appUrl).origin;
+  } catch {
+    return null;
+  }
+}
+
+function buildEmailRedirectTo(req: NextRequest) {
+  const configuredOrigin = getConfiguredAppOrigin();
+  const origin = configuredOrigin ?? req.nextUrl.origin;
+  return `${origin}/auth/callback`;
+}
+
+function createSupabaseAnonClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+      },
+    }
+  );
 }
 
 export async function POST(req: NextRequest) {
@@ -27,7 +63,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
     }
 
-    if (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL) {
+    if (!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL) {
       return NextResponse.json(
         { error: 'Authentication service is not configured correctly' },
         { status: 500 }
@@ -35,24 +71,51 @@ export async function POST(req: NextRequest) {
     }
 
     const { email, password } = parsed.data;
-    const supabase = createSupabaseServiceClient();
+    const supabase = createSupabaseAnonClient();
+    const emailRedirectTo = buildEmailRedirectTo(req);
 
-    // Create a confirmed user to avoid runtime dependency on confirmation email delivery.
-    const { data, error } = await supabase.auth.admin.createUser({
+    let { data, error } = await supabase.auth.signUp({
       email,
       password,
-      email_confirm: true,
-      user_metadata: {
-        signupMethod: 'web',
+      options: {
+        emailRedirectTo,
+        data: {
+          signupMethod: 'web',
+        },
       },
     });
+
+    // If redirect URL config is invalid in Supabase allowlist, retry with project SITE_URL.
+    if (error && isConfirmationEmailError(error.message)) {
+      const retry = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            signupMethod: 'web',
+          },
+        },
+      });
+      data = retry.data;
+      error = retry.error;
+    }
 
     if (error) {
       if (isDuplicateUserError(error.message)) {
         return NextResponse.json({ error: 'An account with this email already exists' }, { status: 409 });
       }
 
-      console.error('Signup createUser failed:', error.message);
+      console.error('Signup signUp failed:', error.message);
+      if (isConfirmationEmailError(error.message)) {
+        return NextResponse.json(
+          {
+            error:
+              'Supabase could not send the verification email. Please verify Auth Email settings and redirect URLs in Supabase dashboard.',
+          },
+          { status: 502 }
+        );
+      }
+
       return NextResponse.json({ error: 'Failed to create account' }, { status: 500 });
     }
 
@@ -62,7 +125,7 @@ export async function POST(req: NextRequest) {
           id: data.user?.id,
           email: data.user?.email,
         },
-        emailConfirmed: true,
+        emailConfirmed: false,
       },
       { status: 201 }
     );

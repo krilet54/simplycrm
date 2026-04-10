@@ -5,6 +5,21 @@ import { createSupabaseServerClient } from '@/lib/supabase-server';
 import { createSupabaseServiceClient } from '@/lib/supabase-server';
 import { z } from 'zod';
 
+function getConfiguredAppOrigin() {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+  if (!appUrl) return null;
+
+  try {
+    return new URL(appUrl).origin;
+  } catch {
+    return null;
+  }
+}
+
+function isConfirmationEmailError(message: string) {
+  return message.toLowerCase().includes('error sending confirmation email');
+}
+
 async function getUser() {
   const supabase = createSupabaseServerClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -99,13 +114,29 @@ export async function POST(req: NextRequest) {
 
   // Invite via Supabase Auth (sends email)
   const supabaseAdmin = createSupabaseServiceClient();
-  const { data: inviteData, error: inviteErr } = await supabaseAdmin.auth.admin.inviteUserByEmail(
+  const appOrigin = getConfiguredAppOrigin();
+  const inviteRedirectTo = appOrigin
+    ? `${appOrigin}/auth/callback?workspace=${dbUser.workspaceId}`
+    : undefined;
+
+  let { data: inviteData, error: inviteErr } = await supabaseAdmin.auth.admin.inviteUserByEmail(
     parsed.data.email,
-    { redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback?workspace=${dbUser.workspaceId}` }
+    inviteRedirectTo ? { redirectTo: inviteRedirectTo } : {}
   );
+
+  // Retry without redirect_to so Supabase falls back to SITE_URL.
+  if (inviteErr && inviteRedirectTo && isConfirmationEmailError(inviteErr.message)) {
+    const retry = await supabaseAdmin.auth.admin.inviteUserByEmail(parsed.data.email);
+    inviteData = retry.data;
+    inviteErr = retry.error;
+  }
 
   if (inviteErr) {
     return NextResponse.json({ error: inviteErr.message }, { status: 500 });
+  }
+
+  if (!inviteData?.user?.id) {
+    return NextResponse.json({ error: 'Supabase invite succeeded without user payload' }, { status: 502 });
   }
 
   // Create pending user record
