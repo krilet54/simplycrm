@@ -20,7 +20,10 @@ export async function GET() {
     orderBy: { shortcut: 'asc' },
   });
 
-  return NextResponse.json({ replies });
+  // Add cache headers - quick replies are relatively static
+  const response = NextResponse.json({ replies });
+  response.headers.set('Cache-Control', 'public, s-maxage=120, stale-while-revalidate=240');
+  return response;
 }
 
 const schema = z.object({

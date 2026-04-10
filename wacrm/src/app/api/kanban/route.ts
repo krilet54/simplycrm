@@ -16,21 +16,108 @@ export async function GET() {
   const dbUser = await getUser();
   if (!dbUser) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const stages = await db.kanbanStage.findMany({
-    where: { workspaceId: dbUser.workspaceId },
-    orderBy: { position: 'asc' },
-    include: {
-      contacts: {
-        orderBy: { lastActivityAt: { sort: 'desc', nulls: 'last' } },
-        include: {
-          contactTags: { include: { tag: true } },
-          _count: { select: { activities: true } },
+  try {
+    // Optimized query: Load stages first, then contacts with minimal relations
+    const stages = await db.kanbanStage.findMany({
+      where: { workspaceId: dbUser.workspaceId },
+      orderBy: { position: 'asc' },
+      select: {
+        id: true,
+        name: true,
+        position: true,
+        color: true,
+        workspaceId: true,
+      },
+    });
+
+    // Get all contacts for this workspace grouped by stage (single efficient query)
+    const contacts = await db.contact.findMany({
+      where: {
+        workspaceId: dbUser.workspaceId,
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        name: true,
+        phone: true,
+        phoneNumber: true,
+        email: true,
+        avatarUrl: true,
+        kanbanStageId: true,
+        lastActivityAt: true,
+        source: true,
+        estimatedValue: true,
+        confidenceLevel: true,
+        assignedToId: true,
+        // Only fetch tag IDs and count, not full tag objects
+      },
+      orderBy: { lastActivityAt: { sort: 'desc', nulls: 'last' } },
+    });
+
+    // Get tag relationships efficiently
+    const contactTagMap = await db.contactTag.findMany({
+      where: { contactId: { in: contacts.map(c => c.id) } },
+      select: {
+        contactId: true,
+        tag: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
+          },
         },
       },
-    },
-  });
+    });
 
-  return NextResponse.json({ stages });
+    // Build tag map for quick lookup
+    const tagsByContactId = new Map<string, any[]>();
+    contactTagMap.forEach(ct => {
+      if (!tagsByContactId.has(ct.contactId)) {
+        tagsByContactId.set(ct.contactId, []);
+      }
+      tagsByContactId.get(ct.contactId)!.push(ct.tag);
+    });
+
+    // Get activity counts for contacts
+    const activityCounts = await db.activity.groupBy({
+      by: ['contactId'],
+      where: { contactId: { in: contacts.map(c => c.id) } },
+      _count: { id: true },
+    });
+
+    const activityCountMap = new Map(
+      activityCounts.map(ac => [ac.contactId, ac._count.id])
+    );
+
+    // Enrich contacts with tags and activity counts
+    const enrichedContacts = contacts.map(contact => ({
+      ...contact,
+      contactTags: (tagsByContactId.get(contact.id) || []).map(tag => ({ tag })),
+      _count: { activities: activityCountMap.get(contact.id) || 0 },
+    }));
+
+    // Group contacts by stage
+    const stagesWithContacts = stages.map(stage => ({
+      ...stage,
+      contacts: enrichedContacts
+        .filter(c => c.kanbanStageId === stage.id)
+        .sort((a, b) => {
+          // Sort by lastActivityAt DESC, with nulls last
+          if (!a.lastActivityAt && !b.lastActivityAt) return 0;
+          if (!a.lastActivityAt) return 1;
+          if (!b.lastActivityAt) return -1;
+          return new Date(b.lastActivityAt).getTime() - new Date(a.lastActivityAt).getTime();
+        }),
+    }));
+
+    // Add cache headers for better performance
+    const response = NextResponse.json({ stages: stagesWithContacts });
+    response.headers.set('Cache-Control', 'public, s-maxage=30, stale-while-revalidate=60');
+    return response;
+  } catch (error) {
+    console.error('Failed to fetch kanban board:', error);
+    return NextResponse.json({ error: 'Failed to fetch kanban board' }, { status: 500 });
+  }
 }
 
 // ── POST /api/kanban  - create a new stage ─────────────────────────────────────

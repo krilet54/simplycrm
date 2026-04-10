@@ -23,8 +23,10 @@ function resolveDatabaseUrl(): string | undefined {
         if (!parsed.searchParams.has('pgbouncer')) {
           parsed.searchParams.set('pgbouncer', 'true');
         }
+        // Increase connection_limit for better concurrent handling
+        // Each Vercel function can handle multiple concurrent requests
         if (!parsed.searchParams.has('connection_limit')) {
-          parsed.searchParams.set('connection_limit', '1');
+          parsed.searchParams.set('connection_limit', '5');
         }
         return parsed.toString();
       }

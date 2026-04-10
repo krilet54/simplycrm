@@ -28,7 +28,10 @@ export async function GET(req: NextRequest) {
       ORDER BY "name" ASC
     `;
 
-    return NextResponse.json({ members });
+    // Add cache headers - team members list is relatively static
+    const response = NextResponse.json({ members });
+    response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=120');
+    return response;
   } catch (error: any) {
     console.error('Failed to fetch workspace members:', error);
     
@@ -50,7 +53,9 @@ export async function GET(req: NextRequest) {
         });
         // Add null phoneNumber to each member
         const membersWithPhone = members.map(m => ({ ...m, phoneNumber: null }));
-        return NextResponse.json({ members: membersWithPhone });
+        const response = NextResponse.json({ members: membersWithPhone });
+        response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=120');
+        return response;
       } catch (fallbackError) {
         console.error('Fallback also failed:', fallbackError);
       }

@@ -168,6 +168,10 @@ model Contact {
   @@index([workspaceId, lastActivityAt])
   @@index([workspaceId, assignedToId])
   @@index([workspaceId, assignedToId, assignmentStatus])
+  @@index([kanbanStageId])
+  @@index([deletedAt])
+  @@index([workspaceId, deletedAt])
+  @@index([workspaceId, kanbanStageId, deletedAt])
   @@map("contacts")
 }
 

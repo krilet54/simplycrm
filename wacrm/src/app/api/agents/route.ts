@@ -35,7 +35,10 @@ export async function GET() {
       ORDER BY "name" ASC
     `;
 
-    return NextResponse.json({ agents });
+    // Add cache headers - agents list is relatively static
+    const response = NextResponse.json({ agents });
+    response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=120');
+    return response;
   } catch (error: any) {
     // If phoneNumber column doesn't exist, fallback to Prisma
     if (error.message?.includes('phoneNumber') || error.message?.includes('column')) {
@@ -46,7 +49,9 @@ export async function GET() {
       });
       // Add null phoneNumber to each agent
       const agentsWithPhone = agents.map(a => ({ ...a, phoneNumber: null }));
-      return NextResponse.json({ agents: agentsWithPhone });
+      const response = NextResponse.json({ agents: agentsWithPhone });
+      response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=120');
+      return response;
     }
     
     console.error('Failed to fetch agents:', error);
