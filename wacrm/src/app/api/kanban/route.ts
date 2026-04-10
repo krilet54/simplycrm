@@ -39,7 +39,6 @@ export async function GET() {
       select: {
         id: true,
         name: true,
-        phone: true,
         phoneNumber: true,
         email: true,
         avatarUrl: true,
@@ -49,7 +48,6 @@ export async function GET() {
         estimatedValue: true,
         confidenceLevel: true,
         assignedToId: true,
-        // Only fetch tag IDs and count, not full tag objects
       },
       orderBy: { lastActivityAt: { sort: 'desc', nulls: 'last' } },
     });
