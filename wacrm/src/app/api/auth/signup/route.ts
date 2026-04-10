@@ -35,11 +35,11 @@ function buildRedirectCandidates(req: NextRequest) {
   const configuredOrigin = getConfiguredAppOrigin();
 
   if (requestOrigin) {
-    candidates.push(`${requestOrigin}/auth/callback`);
+    candidates.push(requestOrigin);
   }
 
   if (configuredOrigin && configuredOrigin !== requestOrigin) {
-    candidates.push(`${configuredOrigin}/auth/callback`);
+    candidates.push(configuredOrigin);
   }
 
   return candidates;
