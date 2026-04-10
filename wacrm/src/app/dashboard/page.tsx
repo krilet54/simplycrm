@@ -61,8 +61,8 @@ export default async function DashboardPage() {
     const [
       totalContacts,
       newContactsThisMonth,
-      unpaidInvoices,
-      paidThisMonthInvoices,
+      unpaidInvoiceStats,
+      paidThisMonthStats,
       recentInvoices,
       overdueFollowUps,
       dueTodayFollowUps,
@@ -82,13 +82,15 @@ export default async function DashboardPage() {
       db.contact.count({ where: { ...contactFilter, createdAt: { gte: monthStart } } }),
 
       // Invoice stats
-      db.invoice.findMany({
+      db.invoice.aggregate({
         where: { ...invoiceFilter, status: { in: ['DRAFT', 'SENT', 'OVERDUE'] } },
-        include: { items: true },
+        _sum: { amount: true },
+        _count: { _all: true },
       }),
-      db.invoice.findMany({
+      db.invoice.aggregate({
         where: { ...invoiceFilter, status: 'PAID', paidAt: { gte: monthStart } },
-        include: { items: true },
+        _sum: { amount: true },
+        _count: { _all: true },
       }),
       db.invoice.findMany({
         where: invoiceFilter,
@@ -134,17 +136,6 @@ export default async function DashboardPage() {
       `.catch(() => [{ onboardingCompleted: false }]),
     ]);
 
-    // Calculate invoice totals
-    const totalUnpaidValue = unpaidInvoices.reduce((sum, inv) => {
-      const itemsTotal = inv.items.reduce((itemSum, item) => itemSum + item.total, 0);
-      return sum + (inv.amount || itemsTotal);
-    }, 0);
-
-    const paidThisMonthTotal = paidThisMonthInvoices.reduce((sum, inv) => {
-      const itemsTotal = inv.items.reduce((itemSum, item) => itemSum + item.total, 0);
-      return sum + (inv.amount || itemsTotal);
-    }, 0);
-
     // Determine if onboarding should be shown
     // Only show for OWNER who hasn't completed onboarding AND doesn't have all items yet
     const onboardingCompleted = (onboardingStatus as any)?.[0]?.onboardingCompleted ?? false;
@@ -159,9 +150,9 @@ export default async function DashboardPage() {
         data={{
           contacts: { total: totalContacts, newThisMonth: newContactsThisMonth },
           invoices: {
-            totalUnpaid: unpaidInvoices.length,
-            totalUnpaidValue,
-            paidThisMonth: paidThisMonthTotal,
+            totalUnpaid: unpaidInvoiceStats._count._all,
+            totalUnpaidValue: unpaidInvoiceStats._sum.amount ?? 0,
+            paidThisMonth: paidThisMonthStats._sum.amount ?? 0,
             recentInvoices,
           },
           followUps: { overdue: overdueFollowUps, dueToday: dueTodayFollowUps, upcomingFollowUps },

@@ -307,6 +307,9 @@ model Invoice {
   @@unique([workspaceId, invoiceNumber])
   @@index([contactId])
   @@index([workspaceId, status])
+  @@index([workspaceId, createdAt])
+  @@index([workspaceId, paidAt])
+  @@index([workspaceId, status, paidAt])
   @@map("invoices")
 }
 

@@ -5,9 +5,6 @@ import KanbanClient from '@/components/kanban/KanbanClient';
 import TasksClient from '@/components/tasks/TasksClient';
 import { getWorkspaceTasks, getTaskStats } from '@/lib/tasks';
 
-// Disable caching to always fetch fresh data
-export const dynamic = 'force-dynamic';
-
 interface PageProps {
   searchParams: Promise<{ view?: string }>;
 }
@@ -67,11 +64,37 @@ export default async function KanbanPage({ searchParams }: PageProps) {
   const stages = await db.kanbanStage.findMany({
     where: { workspaceId: workspace.id },
     orderBy: { position: 'asc' },
-    include: {
+    select: {
+      id: true,
+      name: true,
+      color: true,
+      position: true,
+      workspaceId: true,
       contacts: {
+        where: { deletedAt: null },
         orderBy: { lastActivityAt: { sort: 'desc', nulls: 'last' } },
-        include: {
-          contactTags: { include: { tag: true } },
+        select: {
+          id: true,
+          name: true,
+          phoneNumber: true,
+          email: true,
+          kanbanStageId: true,
+          lastActivityAt: true,
+          estimatedValue: true,
+          confidenceLevel: true,
+          interest: true,
+          contactTags: {
+            select: {
+              tagId: true,
+              tag: {
+                select: {
+                  id: true,
+                  name: true,
+                  color: true,
+                },
+              },
+            },
+          },
         },
       },
     },

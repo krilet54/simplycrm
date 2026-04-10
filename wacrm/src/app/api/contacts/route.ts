@@ -4,26 +4,32 @@ import { db } from '@/lib/db';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
 import { logActivity } from '@/lib/activity';
 import { checkRateLimit } from '@/lib/rate-limit';
+import { withApiTiming } from '@/lib/api-timing';
 import { z } from 'zod';
 
 // ── GET /api/contacts ─────────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
+  const startedAt = performance.now();
+
   // Rate limiting
   const rateLimitResponse = await checkRateLimit(req, 'general');
-  if (rateLimitResponse) return rateLimitResponse;
+  if (rateLimitResponse) return withApiTiming(rateLimitResponse, 'contacts.get', startedAt);
 
   try {
     const supabase = createSupabaseServerClient();
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!user) return withApiTiming(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }), 'contacts.get', startedAt);
 
     const dbUser = await db.user.findUnique({ where: { supabaseId: user.id } });
-    if (!dbUser) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    if (!dbUser) return withApiTiming(NextResponse.json({ error: 'Not found' }, { status: 404 }), 'contacts.get', startedAt);
 
     const { searchParams } = new URL(req.url);
     const search  = searchParams.get('search') ?? '';
     const stageId = searchParams.get('stageId');
     const tagId   = searchParams.get('tagId');
+    const includeCounts = searchParams.get('includeCounts') === 'true';
+    const limitParam = Number(searchParams.get('limit') ?? 200);
+    const limit = Number.isFinite(limitParam) ? Math.min(Math.max(limitParam, 1), 500) : 200;
 
     // Build base where clause
     let where: any = {
@@ -39,16 +45,6 @@ export async function GET(req: NextRequest) {
         { assignedToId: dbUser.id },  // Assigned to them
         { createdById: dbUser.id },   // Created by them
       ];
-      console.log('🔍 AGENT FILTERING CONTACTS:', {
-        agentId: dbUser.id,
-        agentRole: dbUser.role,
-        filterApplied: 'assigned OR created by agent',
-      });
-    } else {
-      console.log('👑 ADMIN/OWNER VIEWING ALL CONTACTS:', {
-        userId: dbUser.id,
-        role: dbUser.role,
-      });
     }
 
     // Apply search filters (using AND to preserve role filter)
@@ -78,7 +74,8 @@ export async function GET(req: NextRequest) {
     // Optimized query: use select instead of include for better performance
     const contacts = await db.contact.findMany({
       where,
-      orderBy: { createdAt: 'desc' },
+      orderBy: { lastActivityAt: { sort: 'desc', nulls: 'last' } },
+      take: limit,
       select: {
         id: true,
         workspaceId: true,
@@ -130,7 +127,7 @@ export async function GET(req: NextRequest) {
     });
 
     // Get invoice counts
-    const invoiceCounts = contactIds.length > 0 ? await db.invoice.groupBy({
+    const invoiceCounts = includeCounts && contactIds.length > 0 ? await db.invoice.groupBy({
       by: ['contactId'],
       where: { contactId: { in: contactIds } },
       _count: { id: true },
@@ -144,30 +141,22 @@ export async function GET(req: NextRequest) {
     const enrichedContacts = contacts.map(contact => ({
       ...contact,
       contactTags: (tagsByContactId.get(contact.id) || []).map(tag => ({ tag })),
-      _count: { invoices: invoiceCountMap.get(contact.id) || 0 },
+      ...(includeCounts ? { _count: { invoices: invoiceCountMap.get(contact.id) || 0 } } : {}),
     }));
-
-    console.log('📊 CONTACTS QUERY RESULT:', {
-      userId: dbUser.id,
-      userRole: dbUser.role,
-      whereClause: where,
-      contactsFound: enrichedContacts.length,
-      contacts: enrichedContacts.map(c => ({
-        id: c.id,
-        name: c.name,
-        assignedToId: c.assignedToId,
-      })),
-    });
 
     // Add cache headers for contacts list
     const response = NextResponse.json({ contacts: enrichedContacts });
     response.headers.set('Cache-Control', 'public, s-maxage=30, stale-while-revalidate=60');
-    return response;
+    return withApiTiming(response, 'contacts.get', startedAt);
   } catch (error: any) {
     console.error('❌ GET /api/contacts error:', error?.message || error);
-    return NextResponse.json(
-      { error: 'Failed to fetch contacts', details: error?.message },
-      { status: 500 }
+    return withApiTiming(
+      NextResponse.json(
+        { error: 'Failed to fetch contacts', details: error?.message },
+        { status: 500 }
+      ),
+      'contacts.get',
+      startedAt
     );
   }
 }
@@ -187,27 +176,33 @@ const createSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  const startedAt = performance.now();
+
   // Rate limiting
   const rateLimitResponse = await checkRateLimit(req, 'general');
-  if (rateLimitResponse) return rateLimitResponse;
+  if (rateLimitResponse) return withApiTiming(rateLimitResponse, 'contacts.post', startedAt);
 
   try {
     const supabase = createSupabaseServerClient();
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!user) return withApiTiming(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }), 'contacts.post', startedAt);
 
     const dbUser = await db.user.findUnique({ where: { supabaseId: user.id } });
-    if (!dbUser) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    if (!dbUser) return withApiTiming(NextResponse.json({ error: 'Not found' }, { status: 404 }), 'contacts.post', startedAt);
 
     // Only OWNER and ADMIN can create contacts
     if (!['OWNER', 'ADMIN'].includes(dbUser.role)) {
-      return NextResponse.json({ error: 'Insufficient permissions. Only OWNER/ADMIN can create contacts.' }, { status: 403 });
+      return withApiTiming(
+        NextResponse.json({ error: 'Insufficient permissions. Only OWNER/ADMIN can create contacts.' }, { status: 403 }),
+        'contacts.post',
+        startedAt
+      );
     }
 
     const body = await req.json();
     const parsed = createSchema.safeParse(body);
     if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+      return withApiTiming(NextResponse.json({ error: parsed.error.flatten() }, { status: 400 }), 'contacts.post', startedAt);
     }
 
     const { phoneNumber, name, email, kanbanStageId, tagIds = [], source, sourceNote, interest, estimatedValue, assignedToId } = parsed.data;
@@ -219,7 +214,7 @@ export async function POST(req: NextRequest) {
       },
     });
     if (existing) {
-      return NextResponse.json({ error: 'Contact with this number already exists' }, { status: 409 });
+      return withApiTiming(NextResponse.json({ error: 'Contact with this number already exists' }, { status: 409 }), 'contacts.post', startedAt);
     }
 
     // Verify assignedTo user belongs to workspace if provided
@@ -228,7 +223,7 @@ export async function POST(req: NextRequest) {
         where: { id: assignedToId, workspaceId: dbUser.workspaceId },
       });
       if (!assignedUser) {
-        return NextResponse.json({ error: 'Assigned user not found in workspace' }, { status: 404 });
+        return withApiTiming(NextResponse.json({ error: 'Assigned user not found in workspace' }, { status: 404 }), 'contacts.post', startedAt);
       }
     }
 
@@ -264,12 +259,16 @@ export async function POST(req: NextRequest) {
       content: `Contact created: ${contact.name || contact.phoneNumber}${source ? ` via ${source}` : ''}`,
     });
 
-    return NextResponse.json({ contact }, { status: 201 });
+    return withApiTiming(NextResponse.json({ contact }, { status: 201 }), 'contacts.post', startedAt);
   } catch (error: any) {
     console.error('❌ POST /api/contacts error:', error?.message || error);
-    return NextResponse.json(
-      { error: 'Failed to create contact', details: error?.message },
-      { status: 500 }
+    return withApiTiming(
+      NextResponse.json(
+        { error: 'Failed to create contact', details: error?.message },
+        { status: 500 }
+      ),
+      'contacts.post',
+      startedAt
     );
   }
 }

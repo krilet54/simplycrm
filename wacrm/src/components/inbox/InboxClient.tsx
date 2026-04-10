@@ -630,12 +630,9 @@ export default function InboxClient({
         <InvoiceCreateModal
           contact={selectedContact as any}
           onClose={() => setShowInvoiceModal(false)}
-          onSuccess={() => {
+          onSuccess={(invoice) => {
             setShowInvoiceModal(false);
-            fetch(`/api/invoices?contactId=${selectedContact.id}`)
-              .then(r => r.json())
-              .then(({ invoices }) => setInvoices(invoices ?? []))
-              .catch(console.error);
+            setInvoices((prev) => [invoice, ...prev]);
           }}
         />
       )}

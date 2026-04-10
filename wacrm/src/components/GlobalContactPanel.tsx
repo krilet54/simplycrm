@@ -39,39 +39,25 @@ export default function GlobalContactPanel({ currentUser }: GlobalContactPanelPr
     
     setRefreshing(true);
     try {
-      // Fetch notes
-      const notesRes = await fetch(`/api/notes?contactId=${contact.id}`, { credentials: 'include' });
-      if (notesRes.ok) {
-        const notesData = await notesRes.json();
-        setNotes?.(notesData.notes || []);
+      const detailsRes = await fetch(`/api/contacts/${contact.id}/details`, { credentials: 'include' });
+      if (!detailsRes.ok) {
+        throw new Error(`Failed to refresh contact details (${detailsRes.status})`);
       }
 
-      // Fetch emails
-      const emailsRes = await fetch(`/api/emails?contactId=${contact.id}`, { credentials: 'include' });
-      if (emailsRes.ok) {
-        const emailsData = await emailsRes.json();
-        setEmails?.(emailsData.emails || []);
+      const detailsData = await detailsRes.json();
+      if (detailsData.contact) {
+        updateContact(detailsData.contact);
       }
-
-      // Fetch invoices
-      const invoicesRes = await fetch(`/api/invoices?contactId=${contact.id}`, { credentials: 'include' });
-      if (invoicesRes.ok) {
-        const invoicesData = await invoicesRes.json();
-        setInvoices?.(invoicesData.invoices || []);
-      }
-
-      // Fetch activities
-      const activitiesRes = await fetch(`/api/contacts/${contact.id}/activity`, { credentials: 'include' });
-      if (activitiesRes.ok) {
-        const activitiesData = await activitiesRes.json();
-        setActivities?.(activitiesData.activities || []);
-      }
+      setNotes?.(detailsData.notes || []);
+      setEmails?.(detailsData.emails || []);
+      setInvoices?.(detailsData.invoices || []);
+      setActivities?.(detailsData.activities || []);
     } catch (error) {
       console.error('Error refreshing contact data:', error);
     } finally {
       setRefreshing(false);
     }
-  }, [contact, setNotes, setEmails, setInvoices, setActivities]);
+  }, [contact, setNotes, setEmails, setInvoices, setActivities, updateContact]);
 
   // Register refresh callback so other components can trigger refresh
   useEffect(() => {

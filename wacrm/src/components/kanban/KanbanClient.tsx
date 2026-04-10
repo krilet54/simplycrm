@@ -1,8 +1,7 @@
 // src/components/kanban/KanbanClient.tsx
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import type { KanbanStageType, ContactType } from '@/types';
@@ -62,13 +61,44 @@ function calculatePipelineStats(stages: StageWithContacts[]) {
   return { pipelineTotal, activeDeals, avgDeal };
 }
 
+function moveContactBetweenStages(
+  prev: StageWithContacts[],
+  contactId: string,
+  fromStageId: string,
+  toStageId: string,
+  patch?: Partial<Omit<ContactType, 'id'>>
+): StageWithContacts[] {
+  let movedContact: ContactType | undefined;
+
+  const removedFromSource = prev.map((stage) => {
+    if (stage.id === fromStageId) {
+      movedContact = stage.contacts.find((c) => c.id === contactId);
+      return { ...stage, contacts: stage.contacts.filter((c) => c.id !== contactId) };
+    }
+    return stage;
+  });
+
+  if (!movedContact) return prev;
+
+  return removedFromSource.map((stage) => {
+    if (stage.id === toStageId) {
+      const updatedContact = { ...movedContact, ...patch, kanbanStageId: toStageId } as ContactType;
+      return {
+        ...stage,
+        contacts: [updatedContact, ...stage.contacts.filter((c) => c.id !== contactId)],
+      };
+    }
+    return stage;
+  });
+}
+
 export default function KanbanClient({ stages: initialStages, onContactSelect }: Props) {
-  const router = useRouter();
   const [stages, setStages] = useState<StageWithContacts[]>(initialStages);
   const [dragging, setDragging] = useState<{ contactId: string; fromStageId: string } | null>(null);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
   const [showAddStage, setShowAddStage] = useState(false);
   const [newStageName, setNewStageName] = useState('');
+  const [pendingMoveIds, setPendingMoveIds] = useState<Set<string>>(new Set());
 
   // Sync state when initialStages prop changes (e.g., after navigation)
   useEffect(() => {
@@ -76,6 +106,7 @@ export default function KanbanClient({ stages: initialStages, onContactSelect }:
   }, [initialStages]);
 
   function onDragStart(contactId: string, fromStageId: string) {
+    if (pendingMoveIds.has(contactId)) return;
     setDragging({ contactId, fromStageId });
   }
 
@@ -99,58 +130,48 @@ export default function KanbanClient({ stages: initialStages, onContactSelect }:
     const { contactId, fromStageId } = dragging;
     setDragging(null);
 
+    if (pendingMoveIds.has(contactId)) return;
+    setPendingMoveIds((prev) => new Set(prev).add(contactId));
+
     // Optimistic update
-    setStages((prev) => {
-      let movedContact: ContactType | undefined;
-      const updated = prev.map((stage) => {
-        if (stage.id === fromStageId) {
-          movedContact = stage.contacts.find((c) => c.id === contactId);
-          return { ...stage, contacts: stage.contacts.filter((c) => c.id !== contactId) };
-        }
-        return stage;
-      });
-      return updated.map((stage) => {
-        if (stage.id === toStageId && movedContact) {
-          return {
-            ...stage,
-            contacts: [{ ...movedContact, kanbanStageId: toStageId }, ...stage.contacts],
-          };
-        }
-        return stage;
-      });
-    });
+    setStages((prev) => moveContactBetweenStages(prev, contactId, fromStageId, toStageId));
 
     try {
       const res = await fetch('/api/kanban', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contactId, stageId: toStageId }),
+        body: JSON.stringify({ contactId, stageId: toStageId, fromStageId }),
       });
-      if (!res.ok) throw new Error();
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        if (res.status === 409 && data.currentStageId) {
+          setStages((prev) => moveContactBetweenStages(prev, contactId, toStageId, data.currentStageId));
+        }
+        throw new Error(data.error || 'Failed to move contact');
+      }
+
+      if (data.contact) {
+        setStages((prev) =>
+          prev.map((stage) => ({
+            ...stage,
+            contacts: stage.contacts.map((contact) =>
+              contact.id === data.contact.id ? { ...contact, ...data.contact } : contact
+            ),
+          }))
+        );
+      }
+
       toast.success('Contact moved');
-      // Refresh server data to ensure cache is updated
-      router.refresh();
-    } catch {
-      toast.error('Failed to move contact');
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to move contact');
       // Revert optimistic update
-      setStages((prev) => {
-        let movedContact: ContactType | undefined;
-        const updated = prev.map((stage) => {
-          if (stage.id === toStageId) {
-            movedContact = stage.contacts.find((c) => c.id === contactId);
-            return { ...stage, contacts: stage.contacts.filter((c) => c.id !== contactId) };
-          }
-          return stage;
-        });
-        return updated.map((stage) => {
-          if (stage.id === fromStageId && movedContact) {
-            return {
-              ...stage,
-              contacts: [{ ...movedContact, kanbanStageId: fromStageId }, ...stage.contacts],
-            };
-          }
-          return stage;
-        });
+      setStages((prev) => moveContactBetweenStages(prev, contactId, toStageId, fromStageId));
+    } finally {
+      setPendingMoveIds((prev) => {
+        const next = new Set(prev);
+        next.delete(contactId);
+        return next;
       });
     }
   }
@@ -276,9 +297,9 @@ export default function KanbanClient({ stages: initialStages, onContactSelect }:
                 {stage.contacts.map((contact) => (
                   <div
                     key={contact.id}
-                    draggable
+                    draggable={!pendingMoveIds.has(contact.id)}
                     onDragStart={() => onDragStart(contact.id, stage.id)}
-                    className="kanban-card relative"
+                    className={`kanban-card relative ${pendingMoveIds.has(contact.id) ? 'opacity-60 cursor-not-allowed' : ''}`}
                   >
                     {/* Intent badge - top left */}
 

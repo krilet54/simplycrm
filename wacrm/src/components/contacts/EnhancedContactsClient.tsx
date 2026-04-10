@@ -1,8 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { X } from 'lucide-react';
 import ContactsClient from './ContactsClient';
 import KanbanClient from '../kanban/KanbanClient';
 import ContactProfilePanel from '../contact-profile/ContactProfilePanel';
@@ -36,7 +35,6 @@ export default function EnhancedContactsClient({
   const [selectedContactId, setSelectedContactId] = useState<string | null>(
     searchParams?.get('contactId') || null
   );
-  const [refreshKey, setRefreshKey] = useState(0);
   const [updatedSelectedContact, setUpdatedSelectedContact] = useState<ContactType | null>(null);
   const [fetchedActivities, setFetchedActivities] = useState<any[]>(activities);
   const [fetchedNotes, setFetchedNotes] = useState<any[]>(notes);
@@ -44,49 +42,38 @@ export default function EnhancedContactsClient({
   const [fetchedEmails, setFetchedEmails] = useState<any[]>(emails);
   const [loading, setLoading] = useState(false);
 
-  const selectedContact = updatedSelectedContact || (selectedContactId 
-    ? contacts.find(c => c.id === selectedContactId)
-    : null);
+  const selectedContact = useMemo(
+    () => updatedSelectedContact || (selectedContactId ? contacts.find(c => c.id === selectedContactId) ?? null : null),
+    [updatedSelectedContact, selectedContactId, contacts]
+  );
+
+  const fetchContactData = useCallback(async (contactId: string) => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/contacts/${contactId}/details`, { credentials: 'include' });
+      if (!res.ok) throw new Error(`Failed to fetch details (${res.status})`);
+
+      const data = await res.json();
+      setFetchedNotes(data.notes || []);
+      setFetchedEmails(data.emails || []);
+      setFetchedInvoices(data.invoices || []);
+      setFetchedActivities(data.activities || []);
+
+      if (data.contact) {
+        setUpdatedSelectedContact(data.contact);
+      }
+    } catch (error) {
+      console.error('Error fetching contact data:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   // Fetch contact details when a contact is selected
   useEffect(() => {
-    if (!selectedContact) return;
-
-    const fetchContactData = async () => {
-      setLoading(true);
-      try {
-        const [notesRes, emailsRes, invoicesRes, activitiesRes] = await Promise.all([
-          fetch(`/api/notes?contactId=${selectedContact.id}`, { credentials: 'include' }),
-          fetch(`/api/emails?contactId=${selectedContact.id}`, { credentials: 'include' }),
-          fetch(`/api/invoices?contactId=${selectedContact.id}`, { credentials: 'include' }),
-          fetch(`/api/contacts/${selectedContact.id}/activity`, { credentials: 'include' }),
-        ]);
-
-        if (notesRes.ok) {
-          const data = await notesRes.json();
-          setFetchedNotes(data.notes || []);
-        }
-        if (emailsRes.ok) {
-          const data = await emailsRes.json();
-          setFetchedEmails(data.emails || []);
-        }
-        if (invoicesRes.ok) {
-          const data = await invoicesRes.json();
-          setFetchedInvoices(data.invoices || []);
-        }
-        if (activitiesRes.ok) {
-          const data = await activitiesRes.json();
-          setFetchedActivities(data.activities || []);
-        }
-      } catch (error) {
-        console.error('Error fetching contact data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchContactData();
-  }, [selectedContact?.id]);
+    if (!selectedContact?.id) return;
+    fetchContactData(selectedContact.id);
+  }, [selectedContact?.id, fetchContactData]);
 
   const contactActivities = fetchedActivities;
   const contactNotes = fetchedNotes;
@@ -95,42 +82,18 @@ export default function EnhancedContactsClient({
 
   // Refresh function to refetch contact data
   const refreshContactData = async () => {
-    if (!selectedContact) return;
-
-    try {
-      const [notesRes, emailsRes, invoicesRes, activitiesRes] = await Promise.all([
-        fetch(`/api/notes?contactId=${selectedContact.id}`, { credentials: 'include' }),
-        fetch(`/api/emails?contactId=${selectedContact.id}`, { credentials: 'include' }),
-        fetch(`/api/invoices?contactId=${selectedContact.id}`, { credentials: 'include' }),
-        fetch(`/api/contacts/${selectedContact.id}/activity`, { credentials: 'include' }),
-      ]);
-
-      if (notesRes.ok) {
-        const data = await notesRes.json();
-        setFetchedNotes(data.notes || []);
-      }
-      if (emailsRes.ok) {
-        const data = await emailsRes.json();
-        setFetchedEmails(data.emails || []);
-      }
-      if (invoicesRes.ok) {
-        const data = await invoicesRes.json();
-        setFetchedInvoices(data.invoices || []);
-      }
-      if (activitiesRes.ok) {
-        const data = await activitiesRes.json();
-        setFetchedActivities(data.activities || []);
-      }
-    } catch (error) {
-      console.error('Error refreshing contact data:', error);
-    }
+    if (!selectedContact?.id) return;
+    await fetchContactData(selectedContact.id);
   };
 
   // Format stages with contacts for Kanban board
-  const stagesWithContacts = stages.map(stage => ({
-    ...stage,
-    contacts: contacts.filter(c => c.kanbanStageId === stage.id),
-  }));
+  const stagesWithContacts = useMemo(
+    () => stages.map(stage => ({
+      ...stage,
+      contacts: contacts.filter(c => c.kanbanStageId === stage.id),
+    })),
+    [stages, contacts]
+  );
 
   return (
     <div className="flex-1 overflow-auto flex">

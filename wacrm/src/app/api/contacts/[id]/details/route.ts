@@ -2,11 +2,14 @@
 import { getAuthenticatedUser } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
+import { withApiTiming } from '@/lib/api-timing';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const startedAt = performance.now();
+
   try {
     const { workspace, dbUser } = await getAuthenticatedUser();
     const { id } = params;
@@ -24,7 +27,7 @@ export async function GET(
     });
 
     if (!contact || contact.workspaceId !== workspace.id) {
-      return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
+      return withApiTiming(NextResponse.json({ error: 'Contact not found' }, { status: 404 }), 'contacts.details.get', startedAt);
     }
 
     // Check assignment - agent can only access their assigned/created contacts
@@ -40,7 +43,7 @@ export async function GET(
           assignedById: contact.assignedById,
           createdById: contact.createdById,
         });
-        return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+        return withApiTiming(NextResponse.json({ error: 'Access denied' }, { status: 403 }), 'contacts.details.get', startedAt);
       }
     }
 
@@ -67,18 +70,26 @@ export async function GET(
       }),
     ]);
 
-    return NextResponse.json({
-      contact,
-      activities,
-      notes,
-      invoices,
-      emails,
-    });
+    return withApiTiming(
+      NextResponse.json({
+        contact,
+        activities,
+        notes,
+        invoices,
+        emails,
+      }),
+      'contacts.details.get',
+      startedAt
+    );
   } catch (error: any) {
     console.error('❌ GET /api/contacts/[id]/details error:', error?.message || error);
-    return NextResponse.json(
-      { error: 'Failed to fetch contact details', details: error?.message },
-      { status: 500 }
+    return withApiTiming(
+      NextResponse.json(
+        { error: 'Failed to fetch contact details', details: error?.message },
+        { status: 500 }
+      ),
+      'contacts.details.get',
+      startedAt
     );
   }
 }

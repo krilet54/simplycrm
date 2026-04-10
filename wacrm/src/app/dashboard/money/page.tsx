@@ -10,7 +10,7 @@ export default async function MoneyPage() {
   monthStart.setHours(0, 0, 0, 0);
 
   // Fetch data in parallel with proper limits
-  const [invoices, allContacts, unpaidStats, paidThisMonthStats, paidAllTimeStats] = await Promise.all([
+  const [invoices, allContacts, unpaidSummary, paidThisMonthSummary, paidAllTimeSummary] = await Promise.all([
     // Paginated invoice list (first 100 for display)
     db.invoice.findMany({
       where: { workspaceId: workspace.id },
@@ -30,49 +30,44 @@ export default async function MoneyPage() {
     }),
 
     // Unpaid count and value (DB aggregation)
-    db.invoice.findMany({
+    db.invoice.aggregate({
       where: { 
         workspaceId: workspace.id, 
         status: { notIn: ['PAID', 'CANCELLED'] } 
       },
-      include: { items: true },
+      _sum: { amount: true },
+      _count: { _all: true },
     }),
 
     // Paid this month
-    db.invoice.findMany({
+    db.invoice.aggregate({
       where: { 
         workspaceId: workspace.id, 
         status: 'PAID',
         paidAt: { gte: monthStart },
       },
-      include: { items: true },
+      _sum: { amount: true },
     }),
 
     // Paid all time
-    db.invoice.findMany({
+    db.invoice.aggregate({
       where: { 
         workspaceId: workspace.id, 
         status: 'PAID',
       },
-      include: { items: true },
+      _sum: { amount: true },
     }),
   ]);
-
-  // Calculate totals (done after single parallel fetch)
-  const calcTotal = (invs: typeof unpaidStats) => invs.reduce((sum, inv) => {
-    const itemsTotal = inv.items.reduce((itemSum, item) => itemSum + item.total, 0);
-    return sum + (inv.amount || itemsTotal);
-  }, 0);
 
   return (
     <MoneyClient
       invoices={invoices}
       contacts={allContacts}
       summary={{
-        totalUnpaid: unpaidStats.length,
-        totalUnpaidValue: calcTotal(unpaidStats),
-        totalPaidThisMonth: calcTotal(paidThisMonthStats),
-        totalPaidAllTime: calcTotal(paidAllTimeStats),
+        totalUnpaid: unpaidSummary._count._all,
+        totalUnpaidValue: unpaidSummary._sum.amount ?? 0,
+        totalPaidThisMonth: paidThisMonthSummary._sum.amount ?? 0,
+        totalPaidAllTime: paidAllTimeSummary._sum.amount ?? 0,
       }}
     />
   );

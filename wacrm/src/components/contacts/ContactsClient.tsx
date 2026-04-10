@@ -1,7 +1,7 @@
 // src/components/contacts/ContactsClient.tsx
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import CSVModal from '@/components/csv/CSVModal';
@@ -47,6 +47,10 @@ export default function ContactsClient({ contacts: init, tags, stages, onContact
   const [fTags,           setFTags]           = useState<string[]>([]);
   const [fWalkIn,         setFWalkIn]         = useState(false);
   const [fLoading,        setFLoading]        = useState(false);
+
+  useEffect(() => {
+    setContacts(init);
+  }, [init]);
 
   function openCreate() {
     setEditTarget(null);
@@ -167,16 +171,30 @@ export default function ContactsClient({ contacts: init, tags, stages, onContact
     setFTags((prev) => prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id]);
   }
 
-  const filtered = contacts.filter((c) => {
+  const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    const matchSearch = !q ||
-      c.name?.toLowerCase().includes(q) ||
-      c.phoneNumber.includes(q) ||
-      c.email?.toLowerCase().includes(q);
-    const matchTag   = !filterTag   || c.contactTags?.some((ct) => ct.tagId === filterTag);
-    const matchStage = !filterStage || c.kanbanStageId === filterStage;
-    return matchSearch && matchTag && matchStage;
-  });
+
+    return contacts.filter((c) => {
+      const matchSearch = !q ||
+        c.name?.toLowerCase().includes(q) ||
+        c.phoneNumber.includes(q) ||
+        c.email?.toLowerCase().includes(q);
+      const matchTag   = !filterTag   || c.contactTags?.some((ct) => ct.tagId === filterTag);
+      const matchStage = !filterStage || c.kanbanStageId === filterStage;
+      return matchSearch && matchTag && matchStage;
+    });
+  }, [contacts, search, filterTag, filterStage]);
+
+  async function refreshContacts() {
+    try {
+      const res = await fetch('/api/contacts?limit=200');
+      if (!res.ok) throw new Error('Failed to fetch contacts');
+      const data = await res.json();
+      setContacts(data.contacts || []);
+    } catch {
+      toast.error('Failed to refresh contacts');
+    }
+  }
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -364,7 +382,10 @@ export default function ContactsClient({ contacts: init, tags, stages, onContact
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button
-                        onClick={() => openEdit(contact)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openEdit(contact);
+                        }}
                         className="text-gray-400 hover:text-forest-600 transition-colors"
                         title="Edit"
                       >
@@ -374,7 +395,10 @@ export default function ContactsClient({ contacts: init, tags, stages, onContact
                         </svg>
                       </button>
                       <button
-                        onClick={() => deleteContact(contact.id)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteContact(contact.id);
+                        }}
                         className="text-gray-400 hover:text-red-500 transition-colors"
                         title="Delete"
                       >
@@ -564,11 +588,7 @@ export default function ContactsClient({ contacts: init, tags, stages, onContact
           onClose={() => setShowCSVModal(false)}
           onImportSuccess={() => {
             setShowCSVModal(false);
-            // Refresh contacts
-            fetch('/api/contacts')
-              .then((r) => r.json())
-              .then((data) => setContacts(data.contacts || []))
-              .catch((e) => toast.error('Failed to refresh contacts'));
+            refreshContacts();
           }}
         />
       )}
@@ -578,11 +598,7 @@ export default function ContactsClient({ contacts: init, tags, stages, onContact
         <DuplicateModal
           onClose={() => setShowDuplicateModal(false)}
           onMergeSuccess={() => {
-            // Refresh contacts after merge
-            fetch('/api/contacts')
-              .then((r) => r.json())
-              .then((data) => setContacts(data.contacts || []))
-              .catch((e) => toast.error('Failed to refresh contacts'));
+            refreshContacts();
           }}
         />
       )}

@@ -20,6 +20,7 @@ interface MoneyClientProps {
 type FilterStatus = 'all' | 'unpaid' | 'paid' | 'cancelled';
 
 export default function MoneyClient({ invoices, contacts, summary }: MoneyClientProps) {
+  const [localInvoices, setLocalInvoices] = useState(invoices);
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
@@ -33,15 +34,17 @@ export default function MoneyClient({ invoices, contacts, summary }: MoneyClient
   };
 
   const filteredInvoices = useMemo(() => {
-    if (filterStatus === 'all') return invoices;
-    return invoices.filter(inv => inv.status.toLowerCase() === filterStatus.toUpperCase());
-  }, [invoices, filterStatus]);
+    if (filterStatus === 'all') return localInvoices;
+    if (filterStatus === 'paid') return localInvoices.filter(inv => inv.status === 'PAID');
+    if (filterStatus === 'cancelled') return localInvoices.filter(inv => inv.status === 'CANCELLED');
+    return localInvoices.filter(inv => !['PAID', 'CANCELLED'].includes(inv.status));
+  }, [localInvoices, filterStatus]);
 
   const tabs: Array<{ id: FilterStatus; label: string; count: number }> = [
-    { id: 'all', label: 'All', count: invoices.length },
-    { id: 'unpaid', label: 'Unpaid', count: invoices.filter(i => i.status === 'UNPAID').length },
-    { id: 'paid', label: 'Paid', count: invoices.filter(i => i.status === 'PAID').length },
-    { id: 'cancelled', label: 'Cancelled', count: invoices.filter(i => i.status === 'CANCELLED').length },
+    { id: 'all', label: 'All', count: localInvoices.length },
+    { id: 'unpaid', label: 'Unpaid', count: localInvoices.filter(i => !['PAID', 'CANCELLED'].includes(i.status)).length },
+    { id: 'paid', label: 'Paid', count: localInvoices.filter(i => i.status === 'PAID').length },
+    { id: 'cancelled', label: 'Cancelled', count: localInvoices.filter(i => i.status === 'CANCELLED').length },
   ];
 
   const getStatusBadge = (status: string) => {
@@ -62,10 +65,12 @@ export default function MoneyClient({ invoices, contacts, summary }: MoneyClient
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'PAID', paidAt: new Date().toISOString() }),
       });
-      if (res.ok) {
-        toast.success('Invoice marked as paid');
-        window.location.reload();
-      }
+
+      if (!res.ok) throw new Error('Failed to update invoice');
+
+      const data = await res.json();
+      setLocalInvoices((prev) => prev.map((inv) => (inv.id === invoiceId ? data.invoice : inv)));
+      toast.success('Invoice marked as paid');
     } catch (error) {
       toast.error('Failed to update invoice');
     }
@@ -75,10 +80,11 @@ export default function MoneyClient({ invoices, contacts, summary }: MoneyClient
     if (!confirm('Delete this invoice?')) return;
     try {
       const res = await fetch(`/api/invoices/${invoiceId}`, { method: 'DELETE' });
-      if (res.ok) {
-        toast.success('Invoice deleted');
-        window.location.reload();
-      }
+
+      if (!res.ok) throw new Error('Failed to delete invoice');
+
+      setLocalInvoices((prev) => prev.filter((inv) => inv.id !== invoiceId));
+      toast.success('Invoice deleted');
     } catch (error) {
       toast.error('Failed to delete invoice');
     }
@@ -113,9 +119,11 @@ export default function MoneyClient({ invoices, contacts, summary }: MoneyClient
       });
 
       if (!res.ok) throw new Error('Failed to update invoice');
+
+      const data = await res.json();
+      setLocalInvoices((prev) => prev.map((inv) => (inv.id === invoiceId ? data.invoice : inv)));
       
       toast.success('Invoice marked as sent');
-      window.location.reload();
     } catch (error) {
       toast.error('Failed to update invoice');
     }
@@ -298,7 +306,10 @@ export default function MoneyClient({ invoices, contacts, summary }: MoneyClient
       <InvoiceModal
         isOpen={isInvoiceModalOpen}
         onClose={() => setIsInvoiceModalOpen(false)}
-        onSuccess={() => window.location.reload()}
+        onSuccess={(invoice) => {
+          setLocalInvoices((prev) => [invoice, ...prev]);
+          setIsInvoiceModalOpen(false);
+        }}
         contacts={contacts}
       />
     </div>

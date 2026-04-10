@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
+import { withApiTiming } from '@/lib/api-timing';
 import { z } from 'zod';
 
 async function getUser() {
@@ -13,8 +14,9 @@ async function getUser() {
 
 // ── GET /api/kanban  - full board with contacts per stage ─────────────────────
 export async function GET() {
+  const startedAt = performance.now();
   const dbUser = await getUser();
-  if (!dbUser) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!dbUser) return withApiTiming(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }), 'kanban.get', startedAt);
 
   try {
     // Optimized query: Load stages first, then contacts with minimal relations
@@ -47,6 +49,7 @@ export async function GET() {
         source: true,
         estimatedValue: true,
         confidenceLevel: true,
+        interest: true,
         assignedToId: true,
       },
       orderBy: { lastActivityAt: { sort: 'desc', nulls: 'last' } },
@@ -76,22 +79,10 @@ export async function GET() {
       tagsByContactId.get(ct.contactId)!.push(ct.tag);
     });
 
-    // Get activity counts for contacts
-    const activityCounts = await db.activity.groupBy({
-      by: ['contactId'],
-      where: { contactId: { in: contacts.map(c => c.id) } },
-      _count: { id: true },
-    });
-
-    const activityCountMap = new Map(
-      activityCounts.map(ac => [ac.contactId, ac._count.id])
-    );
-
-    // Enrich contacts with tags and activity counts
+    // Enrich contacts with tags
     const enrichedContacts = contacts.map(contact => ({
       ...contact,
       contactTags: (tagsByContactId.get(contact.id) || []).map(tag => ({ tag })),
-      _count: { activities: activityCountMap.get(contact.id) || 0 },
     }));
 
     // Group contacts by stage
@@ -111,10 +102,10 @@ export async function GET() {
     // Add cache headers for better performance
     const response = NextResponse.json({ stages: stagesWithContacts });
     response.headers.set('Cache-Control', 'public, s-maxage=30, stale-while-revalidate=60');
-    return response;
+    return withApiTiming(response, 'kanban.get', startedAt);
   } catch (error) {
     console.error('Failed to fetch kanban board:', error);
-    return NextResponse.json({ error: 'Failed to fetch kanban board' }, { status: 500 });
+    return withApiTiming(NextResponse.json({ error: 'Failed to fetch kanban board' }, { status: 500 }), 'kanban.get', startedAt);
   }
 }
 
@@ -156,17 +147,19 @@ export async function POST(req: NextRequest) {
 const moveSchema = z.object({
   contactId: z.string().uuid(),
   stageId: z.string().uuid(),
+  fromStageId: z.string().uuid().optional(),
 });
 
 export async function PATCH(req: NextRequest) {
+  const startedAt = performance.now();
   const dbUser = await getUser();
-  if (!dbUser) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!dbUser) return withApiTiming(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }), 'kanban.patch', startedAt);
 
   const body = await req.json();
   const parsed = moveSchema.safeParse(body);
-  if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+  if (!parsed.success) return withApiTiming(NextResponse.json({ error: parsed.error.flatten() }, { status: 400 }), 'kanban.patch', startedAt);
 
-  const { contactId, stageId } = parsed.data;
+  const { contactId, stageId, fromStageId } = parsed.data;
 
   // Verify ownership
   const [contact, stage] = await Promise.all([
@@ -175,27 +168,42 @@ export async function PATCH(req: NextRequest) {
   ]);
 
   if (!contact || contact.workspaceId !== dbUser.workspaceId) {
-    return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
+    return withApiTiming(NextResponse.json({ error: 'Contact not found' }, { status: 404 }), 'kanban.patch', startedAt);
   }
   if (!stage || stage.workspaceId !== dbUser.workspaceId) {
-    return NextResponse.json({ error: 'Stage not found' }, { status: 404 });
+    return withApiTiming(NextResponse.json({ error: 'Stage not found' }, { status: 404 }), 'kanban.patch', startedAt);
   }
 
-  const updated = await db.contact.update({
-    where: { id: contactId },
-    data: { kanbanStageId: stageId },
-  });
+  if (fromStageId && contact.kanbanStageId !== fromStageId) {
+    return withApiTiming(NextResponse.json(
+      {
+        error: 'Contact stage changed before this move was applied',
+        contactId,
+        currentStageId: contact.kanbanStageId,
+      },
+      { status: 409 }
+    ), 'kanban.patch', startedAt);
+  }
 
-  // Auto-create activity for stage change
-  await db.activity.create({
-    data: {
-      workspaceId: dbUser.workspaceId,
-      contactId,
-      type: 'STAGE_CHANGE',
-      content: `Moved to ${stage.name}`,
-      authorId: dbUser.id,
-    },
-  });
+  const [updated] = await db.$transaction([
+    db.contact.update({
+      where: { id: contactId },
+      data: { kanbanStageId: stageId },
+    }),
+    db.activity.create({
+      data: {
+        workspaceId: dbUser.workspaceId,
+        contactId,
+        type: 'STAGE_CHANGE',
+        content: `Moved to ${stage.name}`,
+        authorId: dbUser.id,
+      },
+    }),
+  ]);
 
-  return NextResponse.json({ contact: updated });
+  return withApiTiming(
+    NextResponse.json({ contact: updated, stage: { id: stage.id, name: stage.name } }),
+    'kanban.patch',
+    startedAt
+  );
 }
