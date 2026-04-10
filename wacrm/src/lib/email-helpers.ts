@@ -1,11 +1,9 @@
 // src/lib/email-helpers.ts
-// Helper functions for common email scenarios
+// Helper functions for BUSINESS emails (invoices, tasks, follow-ups, etc.)
+// AUTH EMAILS ARE HANDLED BY SUPABASE ONLY (sign up, password reset, email verification, etc.)
 
 import {
   sendTemplateEmail,
-  welcomeEmailTemplate,
-  verificationEmailTemplate,
-  passwordResetEmailTemplate,
   teamInviteEmailTemplate,
   invoiceSentEmailTemplate,
   followupReminderEmailTemplate,
@@ -19,81 +17,6 @@ interface WorkspaceContext {
   appUrl: string;
   supportEmail?: string;
   domain?: string;
-}
-
-/**
- * Send welcome email to new user
- */
-export async function sendWelcomeEmail(
-  userEmail: string,
-  userName: string,
-  workspace: WorkspaceContext
-) {
-  const html = welcomeEmailTemplate({
-    recipientName: userName,
-    businessName: workspace.businessName,
-    email: userEmail,
-    actionUrl: `${workspace.appUrl}/dashboard`,
-    supportEmail: workspace.supportEmail || 'support@simplycrm.io',
-  });
-
-  return sendTemplateEmail({
-    to: userEmail,
-    subject: 'Welcome to SimplyCRM! 🎉',
-    html,
-    replyTo: workspace.supportEmail,
-  });
-}
-
-/**
- * Send email verification link
- */
-export async function sendVerificationEmail(
-  userEmail: string,
-  userName: string,
-  verificationToken: string,
-  workspace: WorkspaceContext
-) {
-  const verificationUrl = `${workspace.appUrl}/auth/verify-email?token=${encodeURIComponent(verificationToken)}`;
-
-  const html = verificationEmailTemplate({
-    recipientName: userName,
-    businessName: workspace.businessName,
-    verificationUrl,
-    supportEmail: workspace.supportEmail,
-  });
-
-  return sendTemplateEmail({
-    to: userEmail,
-    subject: 'Verify Your Email Address',
-    html,
-    replyTo: workspace.supportEmail,
-  });
-}
-
-/**
- * Send password reset link
- */
-export async function sendPasswordResetEmail(
-  userEmail: string,
-  userName: string,
-  resetToken: string,
-  workspace: WorkspaceContext
-) {
-  const resetUrl = `${workspace.appUrl}/auth/reset-password?token=${encodeURIComponent(resetToken)}`;
-
-  const html = passwordResetEmailTemplate({
-    recipientName: userName,
-    resetUrl,
-    supportEmail: workspace.supportEmail,
-  });
-
-  return sendTemplateEmail({
-    to: userEmail,
-    subject: 'Reset Your Password',
-    html,
-    replyTo: workspace.supportEmail,
-  });
 }
 
 /**

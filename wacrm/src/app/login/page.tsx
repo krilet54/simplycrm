@@ -23,17 +23,11 @@ export default function LoginPage() {
       const supabase = requireSupabaseBrowserClient();
 
       if (mode === 'reset') {
-        // Use custom password reset endpoint for beautiful emails
-        const response = await fetch('/api/auth/send-password-reset', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: resetEmail }),
+        // Use Supabase's built-in password reset email
+        const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
+          redirectTo: `${window.location.origin}/auth/reset-password`,
         });
-
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.error || 'Password reset failed');
-        }
+        if (error) throw error;
 
         setResetSent(true);
         toast.success('Check your email for a reset link. It expires in 1 hour.');

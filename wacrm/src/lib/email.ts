@@ -280,12 +280,11 @@ export async function sendTemplateEmail({
 }
 
 /**
- * Import template functions for convenience
+ * Export business email templates only
+ * AUTH EMAILS (sign-up, password reset, email verification, invites) are handled by Supabase
+ * These exports are for business emails only (invoices, tasks, follow-ups, etc.)
  */
 export {
-  welcomeEmailTemplate,
-  verificationEmailTemplate,
-  passwordResetEmailTemplate,
   teamInviteEmailTemplate,
   invoiceSentEmailTemplate,
   followupReminderEmailTemplate,
