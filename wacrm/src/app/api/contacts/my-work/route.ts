@@ -21,23 +21,52 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const action = searchParams.get("action");
     const status = (searchParams.get("status") || "ACTIVE") as "ACTIVE" | "COMPLETED";
-    const userRole = searchParams.get("userRole") || dbUser.role;
+    const countOnly = searchParams.get("countOnly") === "true";
+    const limitParam = Number(searchParams.get("limit") ?? 100);
+    const limit = Number.isFinite(limitParam) ? Math.min(Math.max(limitParam, 1), 300) : 100;
 
-    // Special action for owners/admins - get delegated contacts
     if (action === "delegated") {
-      if (!['OWNER', 'ADMIN'].includes(dbUser.role)) {
+      if (!["OWNER", "ADMIN"].includes(dbUser.role)) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
 
-      // Get contacts that this user has assigned to others
+      const delegatedWhere = {
+        workspaceId: dbUser.workspaceId,
+        assignedById: dbUser.id,
+        assignedToId: { not: null },
+        deletedAt: null,
+      };
+
+      if (countOnly) {
+        const count = await db.contact.count({ where: delegatedWhere });
+        return NextResponse.json({ count });
+      }
+
       const contacts = await db.contact.findMany({
-        where: {
-          workspaceId: dbUser.workspaceId,
-          assignedById: dbUser.id,
-          assignedToId: { not: null },
-          deletedAt: null,
-        },
-        include: {
+        where: delegatedWhere,
+        select: {
+          id: true,
+          workspaceId: true,
+          phoneNumber: true,
+          name: true,
+          email: true,
+          avatarUrl: true,
+          kanbanStageId: true,
+          isBlocked: true,
+          source: true,
+          sourceNote: true,
+          interest: true,
+          estimatedValue: true,
+          confidenceLevel: true,
+          lastActivityAt: true,
+          assignedToId: true,
+          assignedById: true,
+          delegationNote: true,
+          assignmentStatus: true,
+          assignedAt: true,
+          completedAt: true,
+          createdAt: true,
+          updatedAt: true,
           assignedTo: {
             select: {
               id: true,
@@ -52,11 +81,19 @@ export async function GET(request: NextRequest) {
               name: true,
             },
           },
-          kanbanStage: true,
+          kanbanStage: {
+            select: {
+              id: true,
+              name: true,
+              color: true,
+              position: true,
+            },
+          },
         },
         orderBy: {
-          assignedAt: 'desc',
+          assignedAt: "desc",
         },
+        take: limit,
       });
 
       return NextResponse.json({
@@ -65,49 +102,94 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Default behavior - get my assignments
-    let where: any = {
+    const where: any = {
       workspaceId: dbUser.workspaceId,
       assignmentStatus: status,
       deletedAt: null,
+      assignedToId: dbUser.id,
     };
 
-    // Role-based visibility:
-    // - OWNER/ADMIN: This endpoint now just returns agent's assigned contacts
-    // - AGENT: see only contacts assigned to them
-    where.assignedToId = dbUser.id;
+    if (countOnly) {
+      const count = await db.contact.count({ where });
+      return NextResponse.json({ count });
+    }
 
-    // Get assignments
     const assignments = await db.contact.findMany({
       where,
-      include: {
-        kanbanStage: true,
-        assignedBy: true,
-        assignedTo: true,
-      } as any,
+      select: {
+        id: true,
+        workspaceId: true,
+        phoneNumber: true,
+        name: true,
+        email: true,
+        avatarUrl: true,
+        kanbanStageId: true,
+        isBlocked: true,
+        source: true,
+        sourceNote: true,
+        interest: true,
+        estimatedValue: true,
+        confidenceLevel: true,
+        lastActivityAt: true,
+        assignedToId: true,
+        assignedById: true,
+        delegationNote: true,
+        assignmentStatus: true,
+        assignedAt: true,
+        completedAt: true,
+        createdAt: true,
+        updatedAt: true,
+        kanbanStage: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
+            position: true,
+          },
+        },
+        assignedBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            avatarUrl: true,
+            role: true,
+          },
+        },
+        assignedTo: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            avatarUrl: true,
+            role: true,
+          },
+        },
+      },
       orderBy: {
         assignedAt: "desc",
-      } as any,
+      },
+      take: limit,
     });
 
-    // Count active vs completed for this user
-    const activeCounts = await db.contact.count({
-      where: {
-        workspaceId: dbUser.workspaceId,
-        assignedToId: dbUser.id,
-        assignmentStatus: "ACTIVE",
-        deletedAt: null,
-      },
-    });
-
-    const completedCounts = await db.contact.count({
-      where: {
-        workspaceId: dbUser.workspaceId,
-        assignedToId: dbUser.id,
-        assignmentStatus: "COMPLETED",
-        deletedAt: null,
-      },
-    });
+    const [activeCounts, completedCounts] = await Promise.all([
+      db.contact.count({
+        where: {
+          workspaceId: dbUser.workspaceId,
+          assignedToId: dbUser.id,
+          assignmentStatus: "ACTIVE",
+          deletedAt: null,
+        },
+      }),
+      db.contact.count({
+        where: {
+          workspaceId: dbUser.workspaceId,
+          assignedToId: dbUser.id,
+          assignmentStatus: "COMPLETED",
+          deletedAt: null,
+        },
+      }),
+    ]);
 
     return NextResponse.json({
       assignments,
@@ -119,13 +201,12 @@ export async function GET(request: NextRequest) {
   } catch (error: any) {
     console.error("Get my work error:", error);
     return NextResponse.json(
-      { error: "Failed to fetch assignments" },
+      { error: "Failed to fetch assignments", details: error?.message },
       { status: 500 }
     );
   }
 }
 
-// POST method for unassign action
 export async function POST(request: NextRequest) {
   try {
     const dbUser = await getUser();
@@ -137,8 +218,7 @@ export async function POST(request: NextRequest) {
     const { action, contactId } = body;
 
     if (action === "unassign") {
-      // Only OWNER and ADMIN can unassign contacts
-      if (!['OWNER', 'ADMIN'].includes(dbUser.role)) {
+      if (!["OWNER", "ADMIN"].includes(dbUser.role)) {
         return NextResponse.json(
           { error: "Only admins can unassign contacts" },
           { status: 403 }
@@ -152,7 +232,6 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Get the contact
       const contact = await db.contact.findUnique({
         where: { id: contactId },
       });
@@ -161,12 +240,10 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Contact not found" }, { status: 404 });
       }
 
-      // Verify user belongs to workspace
       if (dbUser.workspaceId !== contact.workspaceId) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
 
-      // Clear the assignment
       const updated = await db.contact.update({
         where: { id: contactId },
         data: {
@@ -185,14 +262,11 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    return NextResponse.json(
-      { error: "Invalid action" },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "Invalid action" }, { status: 400 });
   } catch (error: any) {
     console.error("My work action error:", error);
     return NextResponse.json(
-      { error: "Failed to perform action" },
+      { error: "Failed to perform action", details: error?.message },
       { status: 500 }
     );
   }

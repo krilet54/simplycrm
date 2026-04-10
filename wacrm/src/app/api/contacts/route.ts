@@ -74,7 +74,10 @@ export async function GET(req: NextRequest) {
     // Optimized query: use select instead of include for better performance
     const contacts = await db.contact.findMany({
       where,
-      orderBy: { lastActivityAt: { sort: 'desc', nulls: 'last' } },
+      orderBy: [
+        { lastActivityAt: 'desc' },
+        { updatedAt: 'desc' },
+      ],
       take: limit,
       select: {
         id: true,
@@ -206,11 +209,12 @@ export async function POST(req: NextRequest) {
     }
 
     const { phoneNumber, name, email, kanbanStageId, tagIds = [], source, sourceNote, interest, estimatedValue, assignedToId } = parsed.data;
+    const normalizedPhone = phoneNumber.replace(/\s+/g, '').trim();
 
     // Check duplicate
     const existing = await db.contact.findUnique({
       where: {
-        workspaceId_phoneNumber: { workspaceId: dbUser.workspaceId, phoneNumber },
+        workspaceId_phoneNumber: { workspaceId: dbUser.workspaceId, phoneNumber: normalizedPhone },
       },
     });
     if (existing) {
@@ -227,10 +231,32 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    if (kanbanStageId) {
+      const stage = await db.kanbanStage.findFirst({
+        where: { id: kanbanStageId, workspaceId: dbUser.workspaceId },
+        select: { id: true },
+      });
+      if (!stage) {
+        return withApiTiming(NextResponse.json({ error: 'Selected pipeline stage not found' }, { status: 404 }), 'contacts.post', startedAt);
+      }
+    }
+
+    if (tagIds.length > 0) {
+      const validTags = await db.tag.count({
+        where: {
+          id: { in: tagIds },
+          workspaceId: dbUser.workspaceId,
+        },
+      });
+      if (validTags !== tagIds.length) {
+        return withApiTiming(NextResponse.json({ error: 'One or more selected tags are invalid' }, { status: 404 }), 'contacts.post', startedAt);
+      }
+    }
+
     const contact = await db.contact.create({
       data: {
         workspaceId: dbUser.workspaceId,
-        phoneNumber,
+        phoneNumber: normalizedPhone,
         name,
         email,
         kanbanStageId,
@@ -247,17 +273,30 @@ export async function POST(req: NextRequest) {
           create: tagIds.map((tagId) => ({ tagId })),
         },
       },
-      include: { kanbanStage: true, contactTags: { include: { tag: true } } },
+      include: {
+        kanbanStage: true,
+        contactTags: { include: { tag: true } },
+        assignedTo: {
+          select: { id: true, name: true, email: true, avatarUrl: true, role: true },
+        },
+        assignedBy: {
+          select: { id: true, name: true, email: true, avatarUrl: true, role: true },
+        },
+      },
     });
 
     // Log activity: Contact created
-    await logActivity({
-      workspaceId: dbUser.workspaceId,
-      contactId: contact.id,
-      type: 'CONTACT_ADDED',
-      authorId: dbUser.id,
-      content: `Contact created: ${contact.name || contact.phoneNumber}${source ? ` via ${source}` : ''}`,
-    });
+    try {
+      await logActivity({
+        workspaceId: dbUser.workspaceId,
+        contactId: contact.id,
+        type: 'CONTACT_ADDED',
+        authorId: dbUser.id,
+        content: `Contact created: ${contact.name || contact.phoneNumber}${source ? ` via ${source}` : ''}`,
+      });
+    } catch (activityError) {
+      console.error('Contact created but activity logging failed:', activityError);
+    }
 
     return withApiTiming(NextResponse.json({ contact }, { status: 201 }), 'contacts.post', startedAt);
   } catch (error: any) {

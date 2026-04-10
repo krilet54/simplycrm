@@ -2,9 +2,10 @@
 import { createSupabaseServerClient } from './supabase-server';
 import { db } from './db';
 import { redirect } from 'next/navigation';
+import { cache } from 'react';
 import type { AgentRole } from '@/types';
 
-export async function getAuthenticatedUser() {
+export const getAuthenticatedUser = cache(async function getAuthenticatedUser() {
   const supabase = createSupabaseServerClient();
   const {
     data: { user },
@@ -73,7 +74,7 @@ export async function getAuthenticatedUser() {
   };
 
   return { supabaseUser: user, dbUser, workspace };
-}
+});
 
 export async function getWorkspaceFromRequest(req: Request) {
   // For API routes, we accept workspace ID in header or derive from user

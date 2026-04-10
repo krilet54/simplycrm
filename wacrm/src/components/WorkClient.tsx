@@ -20,29 +20,37 @@ interface TabCounts {
 export default function WorkClient({ user, workspace }: { user: UserType | null | undefined; workspace: Workspace }) {
   const [activeTab, setActiveTab] = useState<'assignments' | 'tasks' | 'followups'>('assignments');
   const [counts, setCounts] = useState<TabCounts>({ assignments: 0, tasks: 0, followups: 0 });
-  const [refreshKey, setRefreshKey] = useState(0);
+  const [mountedTabs, setMountedTabs] = useState<Record<'assignments' | 'tasks' | 'followups', boolean>>({
+    assignments: true,
+    tasks: false,
+    followups: false,
+  });
 
   // Function to refresh counts - can be called by child components
   const refreshCounts = useCallback(async () => {
     if (!user) return;
 
     try {
-      // Fetch assignment count (active assignments for this user)
-      const assignmentsRes = await fetch('/api/contacts/my-work?status=ACTIVE', { credentials: 'include' });
-      const assignmentsData = await assignmentsRes.json();
-      
-      // Fetch pending tasks count
-      const tasksRes = await fetch('/api/tasks?status=TODO', { credentials: 'include' });
-      const tasksData = await tasksRes.json();
-      
-      // Fetch pending follow-ups count (not done)
-      const followupsRes = await fetch('/api/followups?isDone=false', { credentials: 'include' });
-      const followupsData = await followupsRes.json();
+      const assignmentsQuery = (user.role === 'OWNER' || user.role === 'ADMIN')
+        ? '/api/contacts/my-work?action=delegated&countOnly=true'
+        : '/api/contacts/my-work?status=ACTIVE&countOnly=true';
+
+      const [assignmentsRes, tasksRes, followupsRes] = await Promise.all([
+        fetch(assignmentsQuery, { credentials: 'include' }),
+        fetch(`/api/tasks?status=TODO&userRole=${user.role}&countOnly=true`, { credentials: 'include' }),
+        fetch('/api/followups?isDone=false&countOnly=true', { credentials: 'include' }),
+      ]);
+
+      const [assignmentsData, tasksData, followupsData] = await Promise.all([
+        assignmentsRes.ok ? assignmentsRes.json() : Promise.resolve({}),
+        tasksRes.ok ? tasksRes.json() : Promise.resolve({}),
+        followupsRes.ok ? followupsRes.json() : Promise.resolve({}),
+      ]);
 
       setCounts({
-        assignments: assignmentsData.stats?.active || assignmentsData.assignments?.length || 0,
-        tasks: tasksData.tasks?.length || 0,
-        followups: followupsData.followUps?.length || 0,
+        assignments: assignmentsData.count ?? assignmentsData.stats?.active ?? assignmentsData.assignments?.length ?? 0,
+        tasks: tasksData.count ?? tasksData.tasks?.length ?? 0,
+        followups: followupsData.count ?? followupsData.followUps?.length ?? 0,
       });
     } catch (error) {
       console.error('Failed to fetch work counts:', error);
@@ -54,18 +62,31 @@ export default function WorkClient({ user, workspace }: { user: UserType | null 
     if (!user) return;
 
     refreshCounts();
-    // Refresh every 30 seconds
-    const interval = setInterval(refreshCounts, 30000);
-    return () => clearInterval(interval);
-  }, [user, refreshCounts, refreshKey]);
+    const warmTasks = window.setTimeout(() => {
+      setMountedTabs((prev) => ({ ...prev, tasks: true }));
+    }, 120);
+    const warmFollowups = window.setTimeout(() => {
+      setMountedTabs((prev) => ({ ...prev, followups: true }));
+    }, 260);
+
+    const interval = setInterval(refreshCounts, 60000);
+    return () => {
+      clearInterval(interval);
+      window.clearTimeout(warmTasks);
+      window.clearTimeout(warmFollowups);
+    };
+  }, [user, refreshCounts]);
 
   // Handler for when child components complete an action
   const handleItemCompleted = useCallback(() => {
     // Refresh counts immediately
     refreshCounts();
-    // Also trigger a key change to force refresh in child if needed
-    setRefreshKey(k => k + 1);
   }, [refreshCounts]);
+
+  const handleTabChange = useCallback((tab: 'assignments' | 'tasks' | 'followups') => {
+    setActiveTab(tab);
+    setMountedTabs((prev) => (prev[tab] ? prev : { ...prev, [tab]: true }));
+  }, []);
 
   if (!user) return <div className="text-gray-500 p-4">User data not loaded</div>;
 
@@ -88,7 +109,7 @@ export default function WorkClient({ user, workspace }: { user: UserType | null 
         {tabs.map((tab) => (
           <button
             key={tab.id}
-            onClick={() => setActiveTab(tab.id as any)}
+            onClick={() => handleTabChange(tab.id)}
             className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors flex items-center gap-2 ${
               activeTab === tab.id
                 ? 'border-green-500 text-gray-900'
@@ -111,26 +132,30 @@ export default function WorkClient({ user, workspace }: { user: UserType | null 
 
       {/* Tab Content */}
       <div className="min-h-96">
-        {activeTab === 'assignments' && (
+        <div className={activeTab === 'assignments' ? 'block' : 'hidden'} aria-hidden={activeTab !== 'assignments'}>
           <MyAssignmentsTab 
             user={user} 
             workspace={workspace} 
             onItemCompleted={handleItemCompleted}
           />
-        )}
-        {activeTab === 'tasks' && (
+        </div>
+        {mountedTabs.tasks && (
+          <div className={activeTab === 'tasks' ? 'block' : 'hidden'} aria-hidden={activeTab !== 'tasks'}>
           <TasksTab 
             user={user} 
             workspace={workspace}
             onItemCompleted={handleItemCompleted}
           />
+          </div>
         )}
-        {activeTab === 'followups' && (
+        {mountedTabs.followups && (
+          <div className={activeTab === 'followups' ? 'block' : 'hidden'} aria-hidden={activeTab !== 'followups'}>
           <FollowupsTab 
             user={user} 
             workspace={workspace}
             onItemCompleted={handleItemCompleted}
           />
+          </div>
         )}
       </div>
     </div>

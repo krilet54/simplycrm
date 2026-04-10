@@ -17,10 +17,11 @@ interface DashboardLayoutClientProps {
   children: React.ReactNode;
   user: any;
   trialStatus: TrialStatus;
+  initialBadgeCount: number;
 }
 
-export default function DashboardLayoutClient({ children, user, trialStatus }: DashboardLayoutClientProps) {
-  const [badgeCount, setBadgeCount] = useState(0);
+export default function DashboardLayoutClient({ children, user, trialStatus, initialBadgeCount }: DashboardLayoutClientProps) {
+  const [badgeCount, setBadgeCount] = useState(initialBadgeCount);
   const searchParams = useSearchParams();
   const showExpiredModal = searchParams.get('trial') === 'expired' || trialStatus.status === 'expired';
 
@@ -39,8 +40,6 @@ export default function DashboardLayoutClient({ children, user, trialStatus }: D
       }
     }
 
-    fetchBadgeCount();
-    // Poll every 60 seconds instead of 30 (reduces API load)
     const interval = setInterval(fetchBadgeCount, 60000);
     return () => {
       isMounted = false;
