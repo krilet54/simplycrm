@@ -50,42 +50,43 @@ export default function FollowupsTab({ user, workspace, onItemCompleted }: Follo
 
   // Fetch follow-ups
   useEffect(() => {
-    const fetchFollowups = async () => {
-      setLoading(true);
+    const fetchFollowups = async (silent = false) => {
+      if (!silent) setLoading(true);
       try {
-        let query = '/api/followups?isDone=false';
-        if (tab === 'COMPLETED') query = '/api/followups?isDone=true';
-        if (tab === 'OVERDUE') query = '/api/followups?overdue=true';
+        let query = '/api/followups?isDone=false&withStats=true&limit=100';
+        if (tab === 'COMPLETED') query = '/api/followups?isDone=true&withStats=true&limit=100';
+        if (tab === 'OVERDUE') query = '/api/followups?overdue=true&withStats=true&limit=100';
 
         const res = await fetch(query, { credentials: 'include' });
         if (!res.ok) throw new Error('Failed to fetch');
         const data = await res.json();
         setFollowups(data.followUps || []);
 
-        // Fetch stats
-        const statsRes = await fetch('/api/followups', { credentials: 'include' });
-        if (statsRes.ok) {
-          const allData = await statsRes.json();
+        if (data.stats) {
+          setStats(data.stats);
+        } else {
           setStats({
             pending:
-              allData.followUps?.filter((f: Followup) => !f.isDone && new Date(f.dueDate) >= new Date()).length || 0,
-            completed: allData.followUps?.filter((f: Followup) => f.isDone).length || 0,
+              data.followUps?.filter((f: Followup) => !f.isDone && new Date(f.dueDate) >= new Date()).length || 0,
+            completed: data.followUps?.filter((f: Followup) => f.isDone).length || 0,
             overdue:
-              allData.followUps?.filter((f: Followup) => !f.isDone && new Date(f.dueDate) < new Date()).length || 0,
+              data.followUps?.filter((f: Followup) => !f.isDone && new Date(f.dueDate) < new Date()).length || 0,
           });
         }
       } catch (error) {
         console.error('Error fetching follow-ups:', error);
         toast.error('Failed to load follow-ups');
       } finally {
-        setLoading(false);
+        if (!silent) setLoading(false);
       }
     };
 
-    fetchFollowups();
+    fetchFollowups(false);
     
     // Auto-refresh every 30 seconds
-    const interval = setInterval(fetchFollowups, 30000);
+    const interval = setInterval(() => {
+      fetchFollowups(true);
+    }, 30000);
     return () => clearInterval(interval);
   }, [tab]);
 

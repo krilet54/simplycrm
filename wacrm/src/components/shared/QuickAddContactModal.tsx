@@ -98,7 +98,7 @@ export default function QuickAddContactModal({
 
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || 'Failed to create contact');
+        throw new Error(data.error || data.details || 'Failed to create contact');
       }
 
       toast.success('Contact added successfully!');

@@ -60,13 +60,13 @@ export default function TasksTab({ user, workspace, onItemCompleted }: TasksTabP
       return;
     }
     
-    const fetchTasks = async () => {
-      setLoading(true);
+    const fetchTasks = async (silent = false) => {
+      if (!silent) setLoading(true);
       try {
         // Map tabs to correct status values
-        let query = `/api/tasks?status=TODO&userRole=${user.role}`;
-        if (tab === 'COMPLETED') query = `/api/tasks?status=DONE&userRole=${user.role}`;
-        if (tab === 'OVERDUE') query = `/api/tasks?overdue=true&userRole=${user.role}`;
+        let query = `/api/tasks?status=TODO&userRole=${user.role}&withStats=true&limit=100`;
+        if (tab === 'COMPLETED') query = `/api/tasks?status=DONE&userRole=${user.role}&withStats=true&limit=100`;
+        if (tab === 'OVERDUE') query = `/api/tasks?overdue=true&userRole=${user.role}&withStats=true&limit=100`;
 
         console.log('📡 Fetching tasks:', { query, userRole: user.role });
 
@@ -82,14 +82,13 @@ export default function TasksTab({ user, workspace, onItemCompleted }: TasksTabP
         console.log('✅ Tasks loaded:', { count: data.tasks?.length || 0 });
         setTasks(data.tasks || []);
 
-        // Fetch stats
-        const statsRes = await fetch(`/api/tasks?userRole=${user.role}`, { credentials: 'include' });
-        if (statsRes.ok) {
-          const allData = await statsRes.json();
+        if (data.stats) {
+          setStats(data.stats);
+        } else {
           setStats({
-            pending: allData.tasks?.filter((t: Task) => t.status === 'TODO').length || 0,
-            completed: allData.tasks?.filter((t: Task) => t.status === 'DONE').length || 0,
-            overdue: allData.tasks?.filter(
+            pending: data.tasks?.filter((t: Task) => t.status === 'TODO').length || 0,
+            completed: data.tasks?.filter((t: Task) => t.status === 'DONE').length || 0,
+            overdue: data.tasks?.filter(
               (t: Task) => t.status === 'TODO' && new Date(t.dueDate) < new Date()
             ).length || 0,
           });
@@ -98,14 +97,16 @@ export default function TasksTab({ user, workspace, onItemCompleted }: TasksTabP
         console.error('❌ Error fetching tasks:', error);
         toast.error(error instanceof Error ? error.message : 'Failed to load tasks');
       } finally {
-        setLoading(false);
+        if (!silent) setLoading(false);
       }
     };
 
-    fetchTasks();
+    fetchTasks(false);
     
     // Auto-refresh every 30 seconds
-    const interval = setInterval(fetchTasks, 30000);
+    const interval = setInterval(() => {
+      fetchTasks(true);
+    }, 30000);
     return () => clearInterval(interval);
   }, [tab, user?.role]);
 

@@ -23,10 +23,14 @@ function resolveDatabaseUrl(): string | undefined {
         if (!parsed.searchParams.has('pgbouncer')) {
           parsed.searchParams.set('pgbouncer', 'true');
         }
-        // Keep low connection counts per function to avoid exhausting Postgres
-        // on serverless burst traffic.
+        // Allow more concurrent connections to handle Vercel serverless bursts.
+        // Supabase pooler can handle higher limits; increasing from 5 to 15 for better throughput.
         if (!parsed.searchParams.has('connection_limit')) {
-          parsed.searchParams.set('connection_limit', '1');
+          parsed.searchParams.set('connection_limit', '15');
+        }
+        // Reduce connection wait time to fail fast instead of queueing indefinitely
+        if (!parsed.searchParams.has('pool_timeout')) {
+          parsed.searchParams.set('pool_timeout', '10');
         }
         return parsed.toString();
       }

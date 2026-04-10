@@ -2,7 +2,6 @@
 import { getAuthenticatedUser } from '@/lib/auth';
 import DashboardLayoutClient from './DashboardLayoutClient';
 import { getTrialStatus } from '@/lib/trial';
-import { getWorkBadgeCount } from '@/lib/work-badge';
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { dbUser, workspace } = await getAuthenticatedUser();
@@ -18,13 +17,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
     ...dbUser,
     workspace,
   };
-  const initialBadgeCount = (await getWorkBadgeCount(dbUser)).total;
 
   return (
     <DashboardLayoutClient
       user={userWithWorkspaceData}
       trialStatus={trialStatus}
-      initialBadgeCount={initialBadgeCount}
+      initialBadgeCount={0}
     >
       {children}
     </DashboardLayoutClient>

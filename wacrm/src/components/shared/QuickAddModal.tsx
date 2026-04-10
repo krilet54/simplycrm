@@ -46,7 +46,7 @@ export default function QuickAddModal({ stages, agents, currentUserId }: QuickAd
 
       if (!res.ok) {
         const error = await res.json();
-        throw new Error(error.error || 'Failed to create contact');
+        throw new Error(error.error || error.details || 'Failed to create contact');
       }
 
       const { contact } = await res.json();

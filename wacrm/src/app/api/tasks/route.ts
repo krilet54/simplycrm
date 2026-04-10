@@ -103,41 +103,34 @@ export async function POST(req: NextRequest) {
 // ── GET /api/tasks ────────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
   try {
-    console.log('📡 GET /api/tasks called');
-    
     const supabase = createSupabaseServerClient();
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      console.warn('❌ No authenticated user');
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const dbUser = await db.user.findUnique({ where: { supabaseId: user.id } });
-    if (!dbUser) {
-      console.warn('❌ User not found in database:', { supabaseId: user.id });
-      return NextResponse.json({ error: 'Not found' }, { status: 404 });
-    }
-
-    console.log('✅ User authenticated:', { userId: dbUser.id, role: dbUser.role });
+    if (!dbUser) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
     const { searchParams } = new URL(req.url);
     const status = searchParams.get('status');
     const userRole = searchParams.get('userRole') || dbUser.role;
     const contactId = searchParams.get('contactId');
     const overdue = searchParams.get('overdue') === 'true';
+    const countOnly = searchParams.get('countOnly') === 'true';
+    const withStats = searchParams.get('withStats') === 'true';
+    const limitParam = Number(searchParams.get('limit') ?? 100);
+    const limit = Number.isFinite(limitParam) ? Math.min(Math.max(limitParam, 1), 300) : 100;
 
-    console.log('📋 Query parameters:', { status, userRole, contactId, overdue });
-
-    const where: any = { workspaceId: dbUser.workspaceId };
+    const visibilityWhere: any = { workspaceId: dbUser.workspaceId };
     
     // Role-based visibility: OWNER and ADMIN see all tasks; AGENT sees only their own
     if (userRole !== 'OWNER' && userRole !== 'ADMIN') {
-      where.OR = [
+      visibilityWhere.OR = [
         { assignedToId: dbUser.id },
         { createdById: dbUser.id },
       ];
-      console.log('🔍 Applied agent filter:', { assignedToId: dbUser.id });
     }
+
+    const where: any = { ...visibilityWhere };
     
     if (status) where.status = status;
     if (contactId) where.contactId = contactId;
@@ -155,10 +148,12 @@ export async function GET(req: NextRequest) {
         where.dueDate = { lt: new Date() };
         where.status = 'TODO';  // FIXED: Use TODO instead of PENDING
       }
-      console.log('⏰ Applied overdue filter');
     }
 
-    console.log('🔎 Executing query with where clause:', where);
+    if (countOnly) {
+      const count = await db.task.count({ where });
+      return NextResponse.json({ count }, { status: 200 });
+    }
 
     const tasks = await db.task.findMany({
       where,
@@ -168,10 +163,31 @@ export async function GET(req: NextRequest) {
         assignedTo: { select: { id: true, name: true, avatarUrl: true } },
       },
       orderBy: { createdAt: 'desc' },
+      take: limit,
     });
 
-    console.log('✅ Query successful, found tasks:', { count: tasks.length });
-    return NextResponse.json({ tasks }, { status: 200 });
+    if (!withStats) {
+      return NextResponse.json({ tasks }, { status: 200 });
+    }
+
+    const now = new Date();
+    const [pending, completed, overdueCount] = await Promise.all([
+      db.task.count({ where: { ...visibilityWhere, status: 'TODO' } }),
+      db.task.count({ where: { ...visibilityWhere, status: 'DONE' } }),
+      db.task.count({ where: { ...visibilityWhere, status: 'TODO', dueDate: { lt: now } } }),
+    ]);
+
+    return NextResponse.json(
+      {
+        tasks,
+        stats: {
+          pending,
+          completed,
+          overdue: overdueCount,
+        },
+      },
+      { status: 200 }
+    );
   } catch (error: any) {
     console.error('❌ GET /api/tasks error:', {
       message: error?.message,

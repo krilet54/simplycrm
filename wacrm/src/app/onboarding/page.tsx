@@ -77,9 +77,7 @@ export default function OnboardingPage() {
         <div className="p-8">
           {/* Logo */}
           <div className="flex items-center gap-2 mb-8">
-            <div className="w-8 h-8 rounded-lg bg-forest-600 flex items-center justify-center">
-              <span className="text-white font-bold text-lg">C</span>
-            </div>
+            <img src="/crebo logo 2.png" alt="Crebo" className="w-8 h-8 rounded-lg" />
             <span className="font-bold text-lg" style={{ fontFamily: 'var(--font-display)' }}>Crebo</span>
           </div>
 

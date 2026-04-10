@@ -30,16 +30,21 @@ export default function DashboardLayoutClient({ children, user, trialStatus, ini
     
     async function fetchBadgeCount() {
       try {
-        const res = await fetch('/api/followups/count');
+        // Fetch aggregated work badge counts from lightweight endpoint
+        const res = await fetch('/api/work/badge-count');
         if (res.ok && isMounted) {
           const data = await res.json();
           setBadgeCount(data.total || 0);
         }
       } catch (error) {
-        console.error('Failed to fetch follow-ups count:', error);
+        console.error('Failed to fetch badge count:', error);
       }
     }
 
+    // Fetch immediately on mount to show count without blocking page render
+    fetchBadgeCount();
+    
+    // Refresh every 60 seconds
     const interval = setInterval(fetchBadgeCount, 60000);
     return () => {
       isMounted = false;

@@ -65,61 +65,94 @@ export async function POST(req: NextRequest) {
 
 // ── GET /api/followups ────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
-  const supabase = createSupabaseServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  try {
+    const supabase = createSupabaseServerClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const dbUser = await db.user.findUnique({ where: { supabaseId: user.id } });
-  if (!dbUser) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    const dbUser = await db.user.findUnique({ where: { supabaseId: user.id } });
+    if (!dbUser) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  const { searchParams } = new URL(req.url);
-  const isDone = searchParams.get('isDone');
-  const overdue = searchParams.get('overdue') === 'true';
-  const today = searchParams.get('today') === 'true';
+    const { searchParams } = new URL(req.url);
+    const isDone = searchParams.get('isDone');
+    const overdue = searchParams.get('overdue') === 'true';
+    const today = searchParams.get('today') === 'true';
+    const countOnly = searchParams.get('countOnly') === 'true';
+    const withStats = searchParams.get('withStats') === 'true';
+    const limitParam = Number(searchParams.get('limit') ?? 100);
+    const limit = Number.isFinite(limitParam) ? Math.min(Math.max(limitParam, 1), 300) : 100;
 
-  const where: any = { workspaceId: dbUser.workspaceId };
+    const visibilityWhere: any = { workspaceId: dbUser.workspaceId };
+    if (!['OWNER', 'ADMIN'].includes(dbUser.role)) {
+      visibilityWhere.createdById = dbUser.id;
+    }
 
-  // Role-based visibility: OWNER and ADMIN see all; AGENT sees only their own
-  if (!['OWNER', 'ADMIN'].includes(dbUser.role)) {
-    where.createdById = dbUser.id;
-  }
+    const where: any = { ...visibilityWhere };
 
-  if (isDone === 'true') {
-    where.isDone = true;
-  } else if (isDone === 'false') {
-    where.isDone = false;
-  }
+    if (isDone === 'true') {
+      where.isDone = true;
+    } else if (isDone === 'false') {
+      where.isDone = false;
+    }
 
-  if (overdue) {
-    const today_start = new Date();
-    today_start.setHours(0, 0, 0, 0);
-    where.dueDate = { lt: today_start };
-    where.isDone = false;
-  }
+    if (overdue) {
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      where.dueDate = { lt: todayStart };
+      where.isDone = false;
+    }
 
-  if (today) {
-    const today_start = new Date();
-    today_start.setHours(0, 0, 0, 0);
-    const today_end = new Date();
-    today_end.setHours(23, 59, 59, 999);
-    where.dueDate = { gte: today_start, lte: today_end };
-    where.isDone = false;
-  }
+    if (today) {
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const todayEnd = new Date();
+      todayEnd.setHours(23, 59, 59, 999);
+      where.dueDate = { gte: todayStart, lte: todayEnd };
+      where.isDone = false;
+    }
 
-  const followUps = await db.followUp.findMany({
-    where,
-    include: {
-      contact: {
-        select: {
-          id: true,
-          name: true,
-          phoneNumber: true,
-          kanbanStage: { select: { name: true, color: true } },
+    if (countOnly) {
+      const count = await db.followUp.count({ where });
+      return NextResponse.json({ count });
+    }
+
+    const followUps = await db.followUp.findMany({
+      where,
+      include: {
+        contact: {
+          select: {
+            id: true,
+            name: true,
+            phoneNumber: true,
+            kanbanStage: { select: { name: true, color: true } },
+          },
         },
       },
-    },
-    orderBy: { dueDate: 'asc' },
-  });
+      orderBy: { dueDate: 'asc' },
+      take: limit,
+    });
 
-  return NextResponse.json({ followUps });
+    if (!withStats) {
+      return NextResponse.json({ followUps });
+    }
+
+    const now = new Date();
+    const [pending, completed, overdueCount] = await Promise.all([
+      db.followUp.count({ where: { ...visibilityWhere, isDone: false, dueDate: { gte: now } } }),
+      db.followUp.count({ where: { ...visibilityWhere, isDone: true } }),
+      db.followUp.count({ where: { ...visibilityWhere, isDone: false, dueDate: { lt: now } } }),
+    ]);
+
+    return NextResponse.json({
+      followUps,
+      stats: {
+        pending,
+        completed,
+        overdue: overdueCount,
+      },
+    });
+  } catch (error: any) {
+    console.error('❌ GET /api/followups error:', error?.message || error);
+    return NextResponse.json({ error: 'Failed to fetch follow-ups', details: error?.message }, { status: 500 });
+  }
 }
