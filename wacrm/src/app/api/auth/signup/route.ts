@@ -29,10 +29,20 @@ function getConfiguredAppOrigin() {
   }
 }
 
-function buildEmailRedirectTo(req: NextRequest) {
+function buildRedirectCandidates(req: NextRequest) {
+  const candidates: string[] = [];
+  const requestOrigin = req.nextUrl.origin;
   const configuredOrigin = getConfiguredAppOrigin();
-  const origin = configuredOrigin ?? req.nextUrl.origin;
-  return `${origin}/auth/callback`;
+
+  if (requestOrigin) {
+    candidates.push(`${requestOrigin}/auth/callback`);
+  }
+
+  if (configuredOrigin && configuredOrigin !== requestOrigin) {
+    candidates.push(`${configuredOrigin}/auth/callback`);
+  }
+
+  return candidates;
 }
 
 function createSupabaseAnonClient() {
@@ -72,18 +82,30 @@ export async function POST(req: NextRequest) {
 
     const { email, password } = parsed.data;
     const supabase = createSupabaseAnonClient();
-    const emailRedirectTo = buildEmailRedirectTo(req);
+    const redirectCandidates = buildRedirectCandidates(req);
 
-    let { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo,
-        data: {
-          signupMethod: 'web',
+    let data: any = null;
+    let error: any = null;
+
+    for (const emailRedirectTo of redirectCandidates) {
+      const attempt = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo,
+          data: {
+            signupMethod: 'web',
+          },
         },
-      },
-    });
+      });
+
+      data = attempt.data;
+      error = attempt.error;
+
+      if (!error || !isConfirmationEmailError(error.message)) {
+        break;
+      }
+    }
 
     // If redirect URL config is invalid in Supabase allowlist, retry with project SITE_URL.
     if (error && isConfirmationEmailError(error.message)) {

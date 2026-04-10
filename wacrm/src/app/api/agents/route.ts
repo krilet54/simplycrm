@@ -20,6 +20,22 @@ function isConfirmationEmailError(message: string) {
   return message.toLowerCase().includes('error sending confirmation email');
 }
 
+function buildInviteRedirectCandidates(req: NextRequest, workspaceId: string) {
+  const candidates: string[] = [];
+  const requestOrigin = req.nextUrl.origin;
+  const configuredOrigin = getConfiguredAppOrigin();
+
+  if (requestOrigin) {
+    candidates.push(`${requestOrigin}/auth/callback?workspace=${workspaceId}`);
+  }
+
+  if (configuredOrigin && configuredOrigin !== requestOrigin) {
+    candidates.push(`${configuredOrigin}/auth/callback?workspace=${workspaceId}`);
+  }
+
+  return candidates;
+}
+
 async function getUser() {
   const supabase = createSupabaseServerClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -114,18 +130,23 @@ export async function POST(req: NextRequest) {
 
   // Invite via Supabase Auth (sends email)
   const supabaseAdmin = createSupabaseServiceClient();
-  const appOrigin = getConfiguredAppOrigin();
-  const inviteRedirectTo = appOrigin
-    ? `${appOrigin}/auth/callback?workspace=${dbUser.workspaceId}`
-    : undefined;
+  const redirectCandidates = buildInviteRedirectCandidates(req, dbUser.workspaceId);
 
-  let { data: inviteData, error: inviteErr } = await supabaseAdmin.auth.admin.inviteUserByEmail(
-    parsed.data.email,
-    inviteRedirectTo ? { redirectTo: inviteRedirectTo } : {}
-  );
+  let inviteData: any = null;
+  let inviteErr: any = null;
 
-  // Retry without redirect_to so Supabase falls back to SITE_URL.
-  if (inviteErr && inviteRedirectTo && isConfirmationEmailError(inviteErr.message)) {
+  for (const redirectTo of redirectCandidates) {
+    const attempt = await supabaseAdmin.auth.admin.inviteUserByEmail(parsed.data.email, { redirectTo });
+    inviteData = attempt.data;
+    inviteErr = attempt.error;
+
+    if (!inviteErr || !isConfirmationEmailError(inviteErr.message)) {
+      break;
+    }
+  }
+
+  // Final retry without redirect_to so Supabase falls back to SITE_URL.
+  if (inviteErr && isConfirmationEmailError(inviteErr.message)) {
     const retry = await supabaseAdmin.auth.admin.inviteUserByEmail(parsed.data.email);
     inviteData = retry.data;
     inviteErr = retry.error;
