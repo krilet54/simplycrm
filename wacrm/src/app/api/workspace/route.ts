@@ -532,6 +532,12 @@ export async function DELETE(req: NextRequest) {
 
     console.log(`🗑️ Starting workspace deletion for: ${workspace.businessName} (${workspaceId})`);
 
+    // Capture Supabase user IDs before deleting workspace users from DB.
+    const users = await db.user.findMany({
+      where: { workspaceId },
+      select: { supabaseId: true },
+    });
+
     // Delete all related data in correct order (respecting foreign keys)
     await db.$transaction(async (tx) => {
       // 1. Delete invoice items
@@ -616,29 +622,28 @@ export async function DELETE(req: NextRequest) {
       console.log('  ✓ Deleted Meta OAuth tokens');
 
       // 18. Delete all users in workspace
-      const users = await tx.user.findMany({ 
-        where: { workspaceId },
-        select: { supabaseId: true }
-      });
       await tx.user.deleteMany({ where: { workspaceId } });
       console.log('  ✓ Deleted users');
 
       // 19. Delete workspace
       await tx.workspace.delete({ where: { id: workspaceId } });
       console.log('  ✓ Deleted workspace');
-
-      // 20. Delete Supabase auth users
-      const { createSupabaseServiceClient } = await import('@/lib/supabase-server');
-      const supabaseAdmin = createSupabaseServiceClient();
-      for (const u of users) {
-        try {
-          await supabaseAdmin.auth.admin.deleteUser(u.supabaseId);
-        } catch (e) {
-          console.warn(`  ⚠️ Failed to delete Supabase user ${u.supabaseId}:`, e);
-        }
-      }
-      console.log('  ✓ Deleted Supabase auth users');
+    }, {
+      timeout: 120000,
+      maxWait: 10000,
     });
+
+    // Delete Supabase auth users after the DB transaction commits.
+    const { createSupabaseServiceClient } = await import('@/lib/supabase-server');
+    const supabaseAdmin = createSupabaseServiceClient();
+    for (const u of users) {
+      try {
+        await supabaseAdmin.auth.admin.deleteUser(u.supabaseId);
+      } catch (e) {
+        console.warn(`  ⚠️ Failed to delete Supabase user ${u.supabaseId}:`, e);
+      }
+    }
+    console.log('  ✓ Deleted Supabase auth users');
 
     console.log(`✅ Workspace "${workspace.businessName}" deleted successfully`);
 
